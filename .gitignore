@@ -57,6 +57,9 @@ env/
 # Session data
 sessions/
 
+# Internal planning docs
+PLAN.md
+
 # ── OpenCode / AI tooling ────────────────────────────────
 .omo/
 .codegraph/
