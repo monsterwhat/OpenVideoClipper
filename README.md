@@ -125,6 +125,14 @@ UPLOADED → TRANSCRIBING → TRANSCRIPTION_REVIEW → ANALYZING → SUGGESTIONS
 
 ### Prerequisites
 
+> **Don't have [Chocolatey](https://chocolatey.org/) yet?** Install it first — run this in an **elevated PowerShell** (Run as Administrator):
+>
+> ```powershell
+> Set-ExecutionPolicy Bypass -Scope Process -Force
+> [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+> iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+> ```
+
 | Requirement | Version | Install (Chocolatey) | Link |
 |---|---|---|---|
 | [Java (JDK)](#java) | 25+ (LTS) | `choco install microsoft-openjdk25` | [adoptium.net](https://adoptium.net/temurin/releases/?version=25) |
