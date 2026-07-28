@@ -1,0 +1,66 @@
+# ── Build output ──────────────────────────────────────────
+target/
+
+# ── Java / IDE ───────────────────────────────────────────
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# VS Code
+.vscode/
+
+# NetBeans
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+# ── OS files ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+
+# ── Python ───────────────────────────────────────────────
+scripts/__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# ── Project-specific ─────────────────────────────────────
+# SQLite databases (created at runtime inside storage path)
+*.db
+*.db-wal
+*.db-shm
+
+# Session data
+sessions/
+
+# ── OpenCode / AI tooling ────────────────────────────────
+.omo/
+.codegraph/
+
+# ── NOT ignored (keep tracked) ───────────────────────────
+!run-dev.bat
+!build-uberjar.bat
