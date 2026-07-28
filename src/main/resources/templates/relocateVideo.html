@@ -1,0 +1,30 @@
+{#include base.html}
+{#pageTitle}Locate File - {job.originalFilename}{/}
+
+{#content}
+<nav class="breadcrumb" aria-label="breadcrumbs">
+    <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/job/{job.id}">{job.originalFilename}</a></li>
+        <li class="is-active"><a href="#">Locate File</a></li>
+    </ul>
+</nav>
+
+<div class="box">
+    <h1 class="title">Locate Video File</h1>
+    <p class="subtitle has-text-grey">The original video file was not found. Browse to select its new location.</p>
+    <p class="has-text-grey">Original path: <code>{job.filePath}</code></p>
+
+    {#if param.error}
+    <div class="notification is-danger" style="margin-top: 16px;">
+        {param.error}
+    </div>
+    {/if}
+
+    {#set actionUrl="/job/{job.id}/relocate" /}
+    {#set formId="relocate-file-form" /}
+    {#set buttonText="Select This File" /}
+    {#include fragments/selectFileForm.html /}
+</div>
+{/}
+{/include}

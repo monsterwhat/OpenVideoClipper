@@ -1,0 +1,56 @@
+<div class="storage-navigation" style="margin-bottom: 10px; display: flex; gap: 8px;">
+    <button class="button is-small is-light" 
+            hx-get="/setup/browse?path=~" 
+            hx-target="#storageTree" 
+            hx-swap="innerHTML">
+        <i class="fas fa-home"></i> Home
+    </button>
+    <button class="button is-small is-light" 
+            hx-get="/setup/browse?path=..&currentPath={currentPath}"
+            hx-target="#storageTree" 
+            hx-swap="innerHTML">
+        <i class="fas fa-arrow-up"></i> Up
+    </button>
+</div>
+
+{#for entry in entries}
+<div class="storage-tree-item" style="margin-left: 20px; margin-bottom: 4px;">
+    <details>
+        <summary style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: 4px;" 
+                 onmouseover="this.style.backgroundColor='#f5f5f5'" 
+                 onmouseout="this.style.backgroundColor='transparent'"
+                 tabindex="0" role="button"
+                 aria-label="{entry.name} {#if entry.isDir}(directory){/if}">
+            <span class="icon">
+                {#if entry.isDir}<i class="fas fa-folder" style="color: #f0ad4e;"></i>{#else}<i class="fas fa-file" style="color: #ddd;"></i>{/if}
+            </span>
+            <span class="name">{entry.name}</span>
+        </summary>
+        <div style="margin-left: 20px; display: flex; gap: 4px; padding: 2px 0;">
+            {#if entry.isDir}
+            <button class="button is-small is-link" 
+                    hx-get="/setup/browse?path={entry.path}" 
+                    hx-target="next .tree-children" 
+                    hx-swap="innerHTML"
+                    style="padding: 2px 8px;">
+                Expand
+            </button>
+            {/if}
+            <button class="button is-small is-success" 
+                    data-path="{entry.path}"
+                    hx-post="/setup/select-storage"
+                    hx-vals='js:{path: event.currentTarget.dataset.path}'
+                    hx-target="#storagePathInput"
+                    hx-swap="outerHTML"
+                    hx-on::after-request="document.getElementById('storageModal').classList.remove('is-active')">
+                Select
+            </button>
+        </div>
+        <div class="tree-children" style="margin-left: 20px; border-left: 1px solid #dbdbdb; padding-left: 10px;">
+            {#if entry.isDir}
+                <div class="has-text-grey-light is-size-7" style="padding: 4px;">Click Expand to load...</div>
+            {/if}
+        </div>
+    </details>
+</div>
+{/for}

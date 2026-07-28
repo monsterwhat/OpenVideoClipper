@@ -1,0 +1,257 @@
+{#include base.html}
+{#pageTitle}Open Video Clipper - Settings{/}
+
+{#content}
+<div class="columns is-centered">
+    <div class="column is-three-quarters">
+        <h1 class="title">Settings</h1>
+        <p class="subtitle has-text-grey">Configure transcription, analysis, and clip generation defaults</p>
+
+        {#if uri.query.saved}
+        <div class="notification is-success is-light" id="saved-notification">
+            <button class="delete" onclick="this.parentElement.remove()"></button>
+            Settings saved successfully.
+        </div>
+        {/if}
+
+        <form method="POST" action="/settings">
+
+            <!-- Transcription Settings -->
+            <div class="box">
+                <h2 class="title is-4">
+                    <span class="icon-text">
+                        <span>&#x1f3a4;</span>
+                        <span>Transcription</span>
+                    </span>
+                </h2>
+                <p class="has-text-grey mb-4">Configure the speech-to-text engine and model</p>
+
+                <div class="field">
+                    <label class="label">Provider</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select name="provider" id="providerSelect">
+                                {#for p in providerOptions}
+                                <option value="{p.id}" {#if config.transcriptionProvider == p.id}selected{/if}>
+                                    {p.displayName}
+                                </option>
+                                {/for}
+                            </select>
+                        </div>
+                    </div>
+                    <p class="help">Which transcription engine to use (must be installed)</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Transcription Model</label>
+                    <div class="control">
+                        <input class="input" type="text" name="transcriptionModel"
+                               value="{config.transcriptionModel}" placeholder="large-v3">
+                    </div>
+                    <p class="help">Model name for the transcription engine (e.g. large-v3, medium, small for Whisper)</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Batch Size</label>
+                    <div class="control">
+                        <input class="input" type="number" name="transcriptionBatchSize"
+                               value="{config.transcriptionBatchSize}" min="1" max="100">
+                    </div>
+                    <p class="help">Number of transcription chunks to process in parallel</p>
+                </div>
+            </div>
+
+            <!-- Analysis / LLM Settings -->
+            <div class="box">
+                <h2 class="title is-4">
+                    <span class="icon-text">
+                        <span>&#x1f9e0;</span>
+                        <span>Analysis</span>
+                    </span>
+                </h2>
+                <p class="has-text-grey mb-4">Configure how AI analyzes videos for highlight detection</p>
+
+                <div class="field">
+                    <label class="label">Ollama URL</label>
+                    <div class="control has-icons-right">
+                        <input class="input" type="text" name="ollamaUrl"
+                               value="{config.ollamaUrl}" placeholder="http://localhost:11434" id="ollamaUrlInput">
+                        <button class="button is-small is-info" type="button" id="test-ollama-btn"
+                                hx-post="/setup/test-ollama"
+                                hx-target="#analysisModelSelect"
+                                hx-swap="innerHTML">
+                            Test &amp; Load Models
+                        </button>
+                        <script>
+                        document.getElementById('test-ollama-btn')?.addEventListener('htmx:configRequest', function(ev) {
+                            ev.detail.parameters['ollamaUrl'] = document.getElementById('ollamaUrlInput').value;
+                        });
+                        document.body?.addEventListener('htmx:afterSwap', function(ev) {
+                            if (ev.detail.target.id === 'analysisModelSelect') {
+                                var src = document.getElementById('analysisModelSelect');
+                                var dst = document.getElementById('refinementModelSelect');
+                                if (src && dst) {
+                                    var selected = dst.value;
+                                    dst.innerHTML = '';
+                                    dst.appendChild(new Option('(Use analysis model)', '', false, selected === ''));
+                                    for (var i = 0; i < src.options.length; i++) {
+                                        var opt = src.options[i];
+                                        if (opt.value) {
+                                            dst.appendChild(new Option(opt.value, opt.value, false, opt.value === selected));
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                        </script>
+                    </div>
+                    <p class="help">Ollama API endpoint URL</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">LLM Model (Analysis)</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select name="analysisModel" id="analysisModelSelect">
+                                <option value="{config.analysisModel}" selected>{config.analysisModel}</option>
+                                {#for m in ollamaModels}
+                                {#if m != config.analysisModel}
+                                <option value="{m}">{m}</option>
+                                {/if}
+                                {/for}
+                                <option value="">-- Test connection to load models --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="help">Ollama model used for highlight extraction and analysis</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">LLM Model (Refinement)</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select name="refinementModel" id="refinementModelSelect">
+                                <option value="" {#if config.refinementModel == ''}selected{/if}>(Use analysis model)</option>
+                                <option value="{config.refinementModel}" selected>{config.refinementModel}</option>
+                                {#for m in ollamaModels}
+                                {#if m != config.refinementModel}
+                                <option value="{m}">{m}</option>
+                                {/if}
+                                {/for}
+                            </select>
+                        </div>
+                    </div>
+                    <p class="help">Optional separate model for the refinement pass (merging, boundary snapping, ranking). Leave empty to use the analysis model.</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Temperature</label>
+                    <div class="control">
+                        <input class="input" type="number" name="analysisTemperature"
+                               value="{config.analysisTemperature}" min="0" max="2" step="0.05">
+                    </div>
+                    <p class="help">LLM temperature (0.0 = deterministic, 1.0 = creative, default: 0.3)</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Max Suggestions</label>
+                    <div class="control">
+                        <input class="input" type="number" name="analysisMaxSuggestions"
+                               value="{config.analysisMaxSuggestions}" min="1" max="100">
+                    </div>
+                    <p class="help">Maximum number of clip suggestions per video</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Segment Size <span class="has-text-grey-light">(words)</span></label>
+                    <div class="control">
+                        <input class="input" type="number" name="analysisSegmentSize"
+                               value="{config.analysisSegmentSize}" min="500" max="10000" step="100">
+                    </div>
+                    <p class="help">Max words per LLM chunk. Larger = more context but more tokens. Default: 3000</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Overlap <span class="has-text-grey-light">(words)</span></label>
+                    <div class="control">
+                        <input class="input" type="number" name="analysisOverlapWords"
+                               value="{config.analysisOverlapWords}" min="50" max="2000" step="50">
+                    </div>
+                    <p class="help">Word overlap between adjacent segments to avoid boundary misses. Default: 300</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Request Timeout <span class="has-text-grey-light">(minutes)</span></label>
+                    <div class="control">
+                        <input class="input" type="number" name="analysisTimeoutMinutes"
+                               value="{config.analysisTimeoutMinutes}" min="1" max="60">
+                    </div>
+                    <p class="help">Max wait time for LLM response per request. Default: 5</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">System Instructions</label>
+                    <div class="control">
+                        <textarea class="textarea is-family-monospace" name="analysisPrompt" rows="6"
+                                  placeholder="Describe what kind of moments to look for...">{config.analysisPrompt}</textarea>
+                    </div>
+                    <p class="help">This is the core instruction sent to the LLM for every analysis. It tells the model what kind of clips to look for. Edit to change the default behavior — the per-job prompt on the transcription page is appended to this.</p>
+                </div>
+            </div>
+
+            <!-- Clip Generation Settings -->
+            <div class="box">
+                <h2 class="title is-4">
+                    <span class="icon-text">
+                        <span>&#x2702;&#xfe0f;</span>
+                        <span>Clip Generation</span>
+                    </span>
+                </h2>
+                <p class="has-text-grey mb-4">Configure output format and encoding for generated clips</p>
+
+                <div class="field">
+                    <label class="label">Output Format</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select name="clipFormat">
+                                <option value="mp4" {#if config.clipFormat == 'mp4'}selected{/if}>MP4</option>
+                                <option value="mkv" {#if config.clipFormat == 'mkv'}selected{/if}>MKV</option>
+                                <option value="webm" {#if config.clipFormat == 'webm'}selected{/if}>WebM</option>
+                                <option value="avi" {#if config.clipFormat == 'avi'}selected{/if}>AVI</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="help">Container format for output clips</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Video Codec</label>
+                    <div class="control">
+                        <input class="input" type="text" name="clipCodec"
+                               value="{config.clipCodec}" placeholder="copy" list="codecSuggestions">
+                        <datalist id="codecSuggestions">
+                            <option value="copy">Copy (no re-encode, fastest)</option>
+                            <option value="libx264">H.264</option>
+                            <option value="libx265">H.265 / HEVC</option>
+                            <option value="libvpx-vp9">VP9</option>
+                            <option value="h264_nvenc">H.264 (NVENC)</option>
+                        </datalist>
+                    </div>
+                    <p class="help">FFmpeg video codec. Use <code>copy</code> to avoid re-encoding (fastest).</p>
+                </div>
+            </div>
+
+            <div class="field has-text-centered" style="margin-top: 24px;">
+                <button class="button is-primary is-large is-fullwidth" type="submit">
+                    Save Settings
+                </button>
+            </div>
+
+            <div class="has-text-centered has-text-grey is-size-7" style="margin-top: 8px;">
+                Settings are saved to <code>~/.ovc/config.properties</code>
+            </div>
+        </form>
+    </div>
+</div>
+{/}
+{/include}

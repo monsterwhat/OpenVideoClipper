@@ -1,0 +1,88 @@
+{#include base.html}
+{#pageTitle}Transcription - {job.originalFilename}{/}
+
+{#content}
+<nav class="breadcrumb" aria-label="breadcrumbs">
+    <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/job/{job.id}">{job.originalFilename}</a></li>
+        <li class="is-active"><a href="#">Transcription</a></li>
+    </ul>
+</nav>
+
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Full Transcript</h1>
+            <p class="subtitle" id="selected-count">Selected: {selectedCount}</p>
+        </div>
+    </div>
+    <div class="level-right">
+        <button class="button is-light" onclick="copyTranscript()" title="Copy full transcript to clipboard">Copy</button>
+        <form method="POST" action="/job/{job.id}/suggestions/select-all" style="display: inline;">
+            <button class="button is-info">Select All</button>
+        </form>
+        <a class="button is-primary" href="/job/{job.id}/suggestions">
+            Review &amp; Select Clips
+        </a>
+    </div>
+</div>
+
+{#if suggestions.isEmpty() and job.status.name != 'ANALYZING' and job.status.name != 'TRANSCRIBING'}
+<div class="notification is-warning has-text-centered">
+    No highlights generated yet. AI analysis may still be in progress.
+</div>
+{#else if spans.isEmpty() and job.status.name == 'TRANSCRIBING'}
+<div class="notification is-info has-text-centered">
+    Transcription in progress...
+</div>
+{#else if spans.isEmpty()}
+<div class="notification is-warning has-text-centered">
+    No transcription data available.
+</div>
+{#else}
+<div class="box transcription-box">
+    <div class="transcript-content">
+        {#for span in spans}
+            {#if span.highlighted}
+            <span class="transcript-highlight {#if span.isSelected}selected{/if}"
+                  hx-post="/job/{job.id}/suggestions/{span.suggestionId}/toggle"
+                  hx-trigger="click"
+                  hx-target="closest .transcript-highlight"
+                  hx-swap="outerHTML">
+                {span.text}
+                <span class="suggestion-tag tag is-small {#if span.isSelected}is-success{#else}is-warning{/if}">
+                    {span.suggestionTitle}
+                    <span class="time-badge">{span.formattedStart} - {span.formattedEnd}</span>
+                </span>
+            </span>
+            {#else}
+            <span class="transcript-word">{span.text} </span>
+            {/if}
+        {/for}
+    </div>
+</div>
+{/if}
+
+<script>
+function copyTranscript() {
+    var text = document.querySelector('.transcript-content')?.textContent || '';
+    if (!text) {
+        if (window.showToast) showToast('No transcript text to copy', 'warning');
+        return;
+    }
+    navigator.clipboard.writeText(text.trim()).then(function() {
+        if (window.showToast) showToast('Transcript copied to clipboard', 'success');
+    }).catch(function() {
+        var ta = document.createElement('textarea');
+        ta.value = text.trim();
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (window.showToast) showToast('Transcript copied to clipboard', 'success');
+    });
+}
+</script>
+{/}
+{/include}

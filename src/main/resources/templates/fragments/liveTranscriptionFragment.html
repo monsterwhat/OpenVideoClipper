@@ -1,0 +1,358 @@
+<div id="live-transcription" class="box" data-job-id="{jobId}">
+    <div class="level mb-4">
+        <div class="level-left">
+            <h2 class="title is-5">Live Transcription Review</h2>
+        </div>
+        <div class="level-right">
+            <span id="transcription-status" class="tag is-info" style="font-size: 0.75rem;">Connecting...</span>
+            <span id="word-counter" class="tag is-light" style="font-size: 0.75rem;">0 segments</span>
+        </div>
+    </div>
+    
+    <div class="columns is-gapless is-multiline" style="height: 60vh; min-height: 400px;">
+        <div class="column is-half-desktop is-full-mobile" style="height: 100%; min-height: 400px; display: flex; flex-direction: column;">
+            <div class="has-text-centered" style="background: #1a1a1a; border-radius: 4px 4px 0 0; padding: 0.5rem; border-bottom: 1px solid #dbdbdb;">
+                <span class="has-text-grey is-size-7">Video Playback</span>
+            </div>
+            <div style="flex: 1; background: #000; border-radius: 0 0 4px 4px; overflow: hidden; position: relative;">
+                <video id="review-video" controls playsinline style="width: 100%; height: 100%; object-fit: contain;"
+                       src="/job/{jobId}/video">
+                    Your browser does not support the video tag.
+                </video>
+                <div id="video-loading" class="has-text-centered" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; display: none;">
+                    <progress class="progress is-primary" max="100" value="0" style="width: 200px;"></progress>
+                    <p class="is-size-7 mt-2">Loading video...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="column is-half-desktop is-full-mobile" style="height: 100%; min-height: 400px; display: flex; flex-direction: column; border-left: 1px solid #dbdbdb;">
+            <div class="has-text-centered" style="background: #f5f5f5; border-radius: 4px 4px 0 0; padding: 0.5rem; border-bottom: 1px solid #dbdbdb;">
+                <span class="has-text-grey is-size-7">Transcript</span>
+            </div>
+            <div id="transcript-content" class="content" style="flex: 1; overflow-y: auto; font-size: 0.95rem; line-height: 1.9; padding: 1rem;">
+                <style>
+                    .transcript-chunk {
+                        display: block;
+                        padding: 4px 8px;
+                        margin: 2px 0;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        transition: background 0.15s;
+                        border-left: 3px solid transparent;
+                    }
+                    .transcript-chunk:hover {
+                        background: #e8f0fe;
+                        border-left-color: #3273dc;
+                    }
+                    .transcript-chunk.active {
+                        background: #e8f0fe;
+                        border-left-color: #3273dc;
+                    }
+                    .chunk-label {
+                        font-size: 0.75rem;
+                        color: #999;
+                        display: block;
+                        margin-bottom: 1px;
+                        font-variant-numeric: tabular-nums;
+                    }
+                    .chunk-text {
+                        font-size: 0.95rem;
+                        color: #333;
+                    }
+                </style>
+                <p class="has-text-grey has-text-centered" style="margin-top: 3rem;">Waiting for transcription...</p>
+            </div>
+            <div id="chunk-tooltip" style="display: none; padding: 6px 12px; background: #f5f5f5; border-top: 1px solid #dbdbdb; font-size: 0.85rem; color: #666; flex-shrink: 0;">
+                <span id="chunk-time-label">Hover over a segment to see its timestamp</span>
+                <span id="chunk-tooltip-hint" style="color: #999; font-size: 0.75rem; margin-left: 8px;"></span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="analysis-prompt-section" style="display: none; margin-top: 1rem; padding: 1.25rem; background: #f0f8ff; border: 2px solid #3273dc; border-radius: 6px;">
+        <div class="field">
+            <label class="label is-size-5" for="analysis-prompt">
+                What do you want from this video?
+                <span class="has-text-grey-light has-text-weight-normal is-size-7"> (optional — helps the AI focus)</span>
+            </label>
+            <p class="has-text-grey mb-2 is-size-6">Describe what kind of moments you're looking for so the AI can find relevant clips.</p>
+            <div class="control">
+                <textarea id="analysis-prompt" class="textarea" rows="3"
+                    placeholder="e.g. Funny jokes and punchlines, key technical explanations, emotional speeches, specific topics like AI or gaming, or anything else you care about..."></textarea>
+            </div>
+            <p class="help has-text-grey">The more specific you are, the better the suggestions. Leave blank to let the AI decide what's interesting. You can also set a default prompt in <a href="/settings">Settings</a>.</p>
+        </div>
+    </div>
+
+    <div class="field is-grouped mt-4" style="justify-content: flex-end;">
+        <div class="control">
+            <button class="button is-primary" id="proceed-to-review-btn" style="display: none;">
+                <span class="icon"><i class="fas fa-check"></i></span>
+                <span>Transcription Complete — Proceed to Review</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var container = document.getElementById('live-transcription');
+    if (!container) return;
+    var jobId = container.dataset.jobId;
+    if (!jobId) return;
+
+    var videoEl = document.getElementById('review-video');
+    if (!videoEl) return;
+    var tooltipEl = document.getElementById('chunk-tooltip');
+    var timeLabelEl = document.getElementById('chunk-time-label');
+    var hintEl = document.getElementById('chunk-tooltip-hint');
+
+    var isDestroyed = false;
+    var initialLoadDone = false;
+
+    function cleanup() {
+        isDestroyed = true;
+    }
+
+    document.body.addEventListener('htmx:beforeSwap', function onSwap(event) {
+        if (event.detail.target === document.body) {
+            cleanup();
+            document.body.removeEventListener('htmx:beforeSwap', onSwap);
+        }
+    });
+    window.addEventListener('beforeunload', cleanup);
+
+    // ─── Volume persistence ────────────────────────────────
+
+    var VOLUME_KEY = 'ovc-review-volume';
+    var savedVol = localStorage.getItem(VOLUME_KEY);
+    if (savedVol !== null) {
+        var v = parseFloat(savedVol);
+        if (!isNaN(v) && v >= 0 && v <= 1) videoEl.volume = v;
+    }
+    videoEl.addEventListener('volumechange', function() {
+        localStorage.setItem(VOLUME_KEY, videoEl.volume);
+    });
+
+    // ─── Video timeupdate — auto-highlight current chunk ───
+
+    function highlightCurrentChunk() {
+        if (!videoEl) return;
+        var t = videoEl.currentTime;
+        var chunks = document.querySelectorAll('.transcript-chunk');
+        var activeFound = false;
+        chunks.forEach(function(ch) {
+            var start = parseFloat(ch.dataset.start);
+            var end = parseFloat(ch.dataset.end);
+            if (t >= start && t < end) {
+                ch.classList.add('active');
+                activeFound = true;
+            } else {
+                ch.classList.remove('active');
+            }
+        });
+        if (activeFound) {
+            var activeCh = document.querySelector('.transcript-chunk.active');
+            if (activeCh) {
+                activeCh.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    }
+    videoEl.addEventListener('timeupdate', highlightCurrentChunk);
+
+    // ─── Format helper ─────────────────────────────────────
+
+    function formatTimeRange(startSec, endSec) {
+        function fmt(s) {
+            var total = Math.round(s);
+            var m = Math.floor(total / 60);
+            var sec = total % 60;
+            return m + ':' + sec.toString().padStart(2, '0');
+        }
+        return fmt(startSec) + ' - ' + fmt(endSec);
+    }
+
+    // ─── Append a chunk block ──────────────────────────────
+
+    function appendChunkBlock(chunk) {
+        var contentEl = document.getElementById('transcript-content');
+        if (!contentEl) return;
+        if (!chunk.text || !chunk.text.trim()) return;
+        var waiting = contentEl.querySelector('.has-text-grey.has-text-centered');
+        if (waiting) waiting.remove();
+
+        var div = document.createElement('div');
+        div.className = 'transcript-chunk';
+        div.dataset.chunkIndex = chunk.index;
+        div.dataset.start = chunk.start;
+        div.dataset.end = chunk.end;
+
+        var label = document.createElement('span');
+        label.className = 'chunk-label';
+        label.textContent = formatTimeRange(chunk.start, chunk.end);
+
+        var text = document.createElement('span');
+        text.className = 'chunk-text';
+        text.textContent = chunk.text || '';
+
+        div.appendChild(label);
+        div.appendChild(text);
+        div.addEventListener('mouseenter', onChunkHover);
+        div.addEventListener('mouseleave', onChunkLeave);
+        div.addEventListener('click', onChunkClick);
+        contentEl.appendChild(div);
+
+        var counterEl = document.getElementById('word-counter');
+        if (counterEl) {
+            counterEl.textContent = contentEl.querySelectorAll('.transcript-chunk').length + ' segments';
+        }
+        contentEl.scrollTop = contentEl.scrollHeight;
+    }
+
+    // ─── Chunk hover / click ───────────────────────────────
+
+    var activeChunkEl = null;
+
+    function onChunkHover(ev) {
+        var chunk = ev.currentTarget;
+        activeChunkEl = chunk;
+        var start = parseFloat(chunk.dataset.start);
+        var end = parseFloat(chunk.dataset.end);
+        if (isNaN(start)) return;
+        var rangeStr = formatTimeRange(start, end);
+        if (timeLabelEl) timeLabelEl.textContent = rangeStr;
+        if (hintEl) hintEl.textContent = 'Click to seek';
+        if (tooltipEl) tooltipEl.style.display = 'block';
+    }
+
+    function onChunkLeave(ev) {
+        var chunk = ev.currentTarget;
+        if (activeChunkEl === chunk) activeChunkEl = null;
+        if (tooltipEl && !activeChunkEl) {
+            var stillHovering = tooltipEl.querySelector('.transcript-chunk:hover');
+            if (!stillHovering) {
+                tooltipEl.style.display = 'none';
+            }
+        }
+    }
+
+    function onChunkClick(ev) {
+        var chunk = ev.currentTarget;
+        var start = parseFloat(chunk.dataset.start);
+        if (isNaN(start)) return;
+        if (!videoEl) return;
+        videoEl.currentTime = start;
+        videoEl.play();
+    }
+
+    // ─── Initial chunk load (single fetch) ─────────────────
+
+    function loadExistingChunks() {
+        if (isDestroyed) return;
+        var statusEl = document.getElementById('transcription-status');
+        if (statusEl) { statusEl.textContent = 'Loading...'; statusEl.className = 'tag is-info'; }
+
+        fetch('/job/' + jobId + '/transcription/chunks')
+            .then(function(r) { return r.json(); })
+            .then(function(chunks) {
+                if (chunks && chunks.length > 0) {
+                    chunks.sort(function(a, b) { return a.index - b.index; });
+                    chunks.forEach(function(chunk) { appendChunkBlock(chunk); });
+                }
+                if (statusEl) { statusEl.textContent = 'Connected'; statusEl.className = 'tag is-info'; }
+                initialLoadDone = true;
+            })
+            .catch(function(err) {
+                console.error('Failed to load chunks:', err);
+                if (statusEl) { statusEl.textContent = 'Load failed'; statusEl.className = 'tag is-warning'; }
+                initialLoadDone = true;
+            });
+    }
+
+    // ─── SSE event listeners via custom DOM events ─────────
+
+    container.addEventListener('ovc:refresh-chunks', function() {
+        loadExistingChunks();
+    });
+
+    container.addEventListener('ovc:chunk', function(e) {
+        if (isDestroyed || !initialLoadDone) return;
+        var chunk = e.detail;
+        if (!chunk) return;
+        var existing = document.querySelector('.transcript-chunk[data-chunk-index="' + chunk.index + '"]');
+        if (!existing) {
+            appendChunkBlock(chunk);
+        }
+    });
+
+    container.addEventListener('ovc:state', function(e) {
+        if (isDestroyed) return;
+        var status = (e.detail || {}).status;
+        var displayEl = document.getElementById('transcription-status');
+        var proceedBtn = document.getElementById('proceed-to-review-btn');
+        var promptSection = document.getElementById('analysis-prompt-section');
+
+        if (status === 'TRANSCRIBING') {
+            if (displayEl) { displayEl.textContent = 'Transcribing...'; displayEl.className = 'tag is-info'; }
+        } else if (status === 'TRANSCRIPTION_REVIEW') {
+            if (displayEl) { displayEl.textContent = 'Complete - Ready for Review'; displayEl.className = 'tag is-success'; }
+            if (proceedBtn) proceedBtn.style.display = 'block';
+            if (promptSection) promptSection.style.display = 'block';
+            if (tooltipEl) {
+                tooltipEl.style.display = 'block';
+                if (timeLabelEl) timeLabelEl.textContent = 'Transcription complete';
+                if (hintEl) hintEl.textContent = 'Click a segment to jump to that moment';
+            }
+        } else if (status === 'FAILED') {
+            if (displayEl) { displayEl.textContent = 'Failed'; displayEl.className = 'tag is-danger'; }
+        }
+    });
+
+    // Load chunks immediately if container is already visible
+    if (container.closest('#live-transcription-container') &&
+        container.closest('#live-transcription-container').style.display !== 'none') {
+        loadExistingChunks();
+    }
+
+    // ─── Proceed button ────────────────────────────────────
+
+    var proceedBtn = document.getElementById('proceed-to-review-btn');
+    if (proceedBtn) {
+        proceedBtn.addEventListener('click', async function() {
+            proceedBtn.disabled = true;
+            proceedBtn.innerHTML = '<span class="icon"><i class="fas fa-spinner fa-pulse"></i></span><span>Finalizing...</span>';
+            try {
+                var promptEl = document.getElementById('analysis-prompt');
+                var promptValue = promptEl ? promptEl.value.trim() : '';
+                var body = promptValue ? JSON.stringify({ prompt: promptValue }) : '{}';
+                var res = await fetch('/job/' + jobId + '/transcription/finalize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body
+                });
+                if (res.ok) {
+                    if (window.showToast) {
+                        showToast('AI analysis started. Redirecting...', 'success');
+                    }
+                    setTimeout(function() {
+                        window.location.href = '/job/' + jobId + '/suggestions';
+                    }, 1000);
+                } else {
+                    var err = await res.json().catch(function() { return { error: 'Finalize failed' }; });
+                    if (window.showToast) {
+                        showToast('Failed to finalize: ' + (err.error || 'Unknown error'), 'danger');
+                    }
+                    proceedBtn.disabled = false;
+                    proceedBtn.innerHTML = '<span class="icon"><i class="fas fa-check"></i></span><span>Transcription Complete - Proceed to Review</span>';
+                }
+            } catch (err) {
+                console.error('Finalize failed:', err);
+                if (window.showToast) showToast('Failed to finalize. Try again.', 'danger');
+                proceedBtn.disabled = false;
+                proceedBtn.innerHTML = '<span class="icon"><i class="fas fa-check"></i></span><span>Transcription Complete - Proceed to Review</span>';
+            }
+        });
+    }
+})();
+</script>

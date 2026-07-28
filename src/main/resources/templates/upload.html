@@ -1,0 +1,782 @@
+{#include base.html}
+{#pageTitle}Open Video Clipper - Upload Video{/}
+
+{#content}
+<div class="columns is-centered">
+    <div class="column">
+        <div class="box" id="upload-container">
+            <h1 class="title has-text-centered">Upload Video</h1>
+            <p class="subtitle has-text-centered has-text-grey">Upload a video file to start clipping</p>
+
+            <!-- File Selection Zone -->
+            <div id="upload-form-area">
+                <div class="upload-zone" id="drop-zone">
+                    <span class="upload-icon" id="upload-icon">📁</span>
+                    <p class="has-text-weight-bold" style="font-size: 16px;" id="drop-text">Drop a video file here, or click to browse</p>
+                    <p class="has-text-grey" style="font-size: 13px; margin-top: 4px;">MP4, AVI, MOV, MKV supported</p>
+                    <input type="file" id="file-input" accept="video/*" style="display: none;">
+                </div>
+
+                <!-- File Details (shown after selection) -->
+                <div id="file-details" style="display: none; margin-top: 16px;">
+                    <div class="file-badge">
+                        <span>🎬</span>
+                        <span class="file-badge-name" id="file-name-display"></span>
+                        <span class="file-badge-size" id="file-size-display"></span>
+                    </div>
+                </div>
+
+                <!-- Upload Button -->
+                <div class="has-text-centered" style="margin-top: 20px;">
+                    <button class="button is-primary is-large" id="upload-btn" disabled style="min-width: 220px;">
+                        Upload &amp; Process
+                    </button>
+                </div>
+
+                <div class="upload-extra" style="margin-top: 24px;">
+                    <hr>
+                    <div class="has-text-centered">
+                        <p class="has-text-grey" style="margin-bottom: 8px;">Or use a file already on disk:</p>
+                        <a class="button is-outlined is-medium" href="/job/select-video">
+                            Select Local File
+                        </a>
+                    </div>
+                </div>
+
+                {#if param.error}
+                <div class="notification is-danger upload-error" style="margin-top: 16px;">
+                    {param.error}
+                </div>
+                {/if}
+            </div>
+
+            <!-- Upload Progress Area (shown during upload) -->
+            <div id="upload-progress-area" style="display: none;">
+                <div class="upload-progress-area">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                        <span style="font-size: 28px;">⬆️</span>
+                        <div>
+                            <p class="has-text-weight-bold" id="upload-progress-label">Uploading...</p>
+                            <p class="has-text-grey" id="upload-progress-file" style="font-size: 13px;"></p>
+                        </div>
+                    </div>
+                    <progress class="progress is-primary" id="upload-progress-bar" value="0" max="100" style="height: 8px;">0%</progress>
+                    <div class="upload-stats">
+                        <span id="upload-percent">0%</span>
+                        <span class="upload-speed" id="upload-speed">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Processing Area (shown after upload, replaces upload form) -->
+            <div id="processing-area" style="display: none;">
+                <div class="upload-to-processing">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                        <span style="font-size: 28px;">✅</span>
+                        <div>
+                            <p class="has-text-weight-bold has-text-success">Upload complete!</p>
+                            <p class="has-text-grey" id="processing-file-name" style="font-size: 13px;"></p>
+                            <p class="has-text-grey is-size-7" id="processing-file-details" style="margin-top: 2px;"></p>
+                        </div>
+                    </div>
+
+                    <!-- Processing phase cards injected here -->
+                    <div id="processing-phase-container">
+                        <!-- Phase 1: Audio Extraction -->
+                        <div class="phase-item" id="phase-extract">
+                            <span class="phase-dot pending"></span>
+                            <span class="phase-name">Convert video to audio</span>
+                            <span class="phase-status" id="phase-extract-status">Waiting...</span>
+                        </div>
+                        <!-- Phase 2: Transcription -->
+                        <div class="phase-item" id="phase-transcribe">
+                            <span class="phase-dot pending"></span>
+                            <span class="phase-name">Transcribe audio to text</span>
+                            <span class="phase-status" id="phase-transcribe-status">Waiting...</span>
+                        </div>
+                        <!-- Phase 3: Analysis -->
+                        <div class="phase-item" id="phase-analyze">
+                            <span class="phase-dot pending"></span>
+                            <span class="phase-name">Analyze content with AI</span>
+                            <span class="phase-status" id="phase-analyze-status">Waiting...</span>
+                        </div>
+                    </div>
+
+                    <!-- Progress bar for active phase -->
+                    <div style="margin-top: 16px;">
+                    <progress class="progress is-small is-info" id="phase-progress-bar" value="0" max="100">0%</progress>
+                        <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+                            <div>
+                                <span class="has-text-grey" id="phase-active-label" style="font-size: 13px;">Initializing...</span>
+                                <span class="has-text-grey is-size-7" id="phase-detail-message" style="display: block; margin-top: 2px;"></span>
+                            </div>
+                            <span class="has-text-grey" id="phase-percent" style="font-size: 13px; font-variant-numeric: tabular-nums; flex-shrink: 0;">0%</span>
+                        </div>
+                    </div>
+
+                    <div id="upload-live-transcription" data-job-id="" style="display: none; margin-top: 16px;">
+                        <style>
+                            .transcript-chunk {
+                                display: block;
+                                padding: 4px 8px;
+                                margin: 2px 0;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                transition: background 0.15s;
+                                border-left: 3px solid transparent;
+                            }
+                            .transcript-chunk:hover {
+                                background: #e8f0fe;
+                                border-left-color: #3273dc;
+                            }
+                            .transcript-chunk.active {
+                                background: #e8f0fe;
+                                border-left-color: #3273dc;
+                            }
+                            .chunk-label {
+                                font-size: 0.75rem;
+                                color: #999;
+                                display: block;
+                                margin-bottom: 1px;
+                                font-variant-numeric: tabular-nums;
+                            }
+                            .chunk-text {
+                                font-size: 0.95rem;
+                                color: #333;
+                            }
+                        </style>
+                        <div class="columns is-gapless is-multiline" style="height: 50vh; min-height: 300px;">
+                            <div class="column is-half-desktop is-full-mobile" style="height: 100%; min-height: 300px; display: flex; flex-direction: column;">
+                                <div class="has-text-centered" style="background: #1a1a1a; border-radius: 4px 4px 0 0; padding: 0.5rem; border-bottom: 1px solid #dbdbdb;">
+                                    <span class="has-text-grey is-size-7">Video Playback</span>
+                                </div>
+                                <div style="flex: 1; background: #000; border-radius: 0 0 4px 4px; overflow: hidden; position: relative;">
+                   <video id="upload-review-video" controls playsinline style="width: 100%; height: 100%; object-fit: contain;">
+                        Your browser does not support the video tag.
+                    </video>
+                                </div>
+                            </div>
+                            <div class="column is-half-desktop is-full-mobile" style="height: 100%; min-height: 300px; display: flex; flex-direction: column; border-left: 1px solid #dbdbdb;">
+                                <div class="has-text-centered" style="background: #f5f5f5; border-radius: 4px 4px 0 0; padding: 0.5rem; border-bottom: 1px solid #dbdbdb;">
+                                    <span class="has-text-grey is-size-7">Transcript</span>
+                                </div>
+                                <div id="upload-transcript-content" class="content" style="flex: 1; overflow-y: auto; font-size: 0.95rem; line-height: 1.9; padding: 1rem;">
+                                    <p class="has-text-grey has-text-centered" style="margin-top: 3rem;">Waiting for transcription...</p>
+                                </div>
+                                <div id="upload-word-tooltip" style="display: none; padding: 6px 12px; background: #f5f5f5; border-top: 1px solid #dbdbdb; font-size: 0.85rem; color: #666; flex-shrink: 0;">
+                                    <span id="upload-word-time-label">Hover over a segment to see its timestamp</span>
+                                    <span id="upload-word-tooltip-hint" style="color: #999; font-size: 0.75rem; margin-left: 8px;"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- After processing links (shown when job reaches review/ready state) -->
+                    <div id="processing-done-area" style="display: none; margin-top: 12px;">
+                        <hr>
+                        <div class="has-text-centered" id="processing-done-content"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error display -->
+            <div id="upload-error-area" style="display: none; margin-top: 16px;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const uploadBtn = document.getElementById('upload-btn');
+    const formArea = document.getElementById('upload-form-area');
+    const progressArea = document.getElementById('upload-progress-area');
+    const processingArea = document.getElementById('processing-area');
+    const errorArea = document.getElementById('upload-error-area');
+    const fileDetails = document.getElementById('file-details');
+
+    let selectedFile = null;
+    let pollInterval = null;
+    let currentJobId = null;
+    const CHUNK_SECONDS = 5;
+
+    // ── File Selection ──
+    dropZone.addEventListener('click', function() { fileInput.click(); });
+
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove('drag-over');
+    });
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0) {
+            handleFileSelect(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', function() {
+        if (fileInput.files.length > 0) {
+            handleFileSelect(fileInput.files[0]);
+        }
+    });
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+    }
+
+    function handleFileSelect(file) {
+        const validTypes = ['video/mp4', 'video/avi', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'];
+        // Allow any video type from browser
+        if (!file.type.startsWith('video/')) {
+            showUploadError('Please select a valid video file (MP4, AVI, MOV, MKV)');
+            return;
+        }
+        selectedFile = file;
+        dropZone.classList.add('has-file');
+        document.getElementById('upload-icon').textContent = '🎬';
+        document.getElementById('drop-text').textContent = file.name;
+        document.getElementById('file-name-display').textContent = file.name;
+        document.getElementById('file-size-display').textContent = formatFileSize(file.size);
+        fileDetails.style.display = 'block';
+        uploadBtn.disabled = false;
+        hideUploadError();
+    }
+
+    // ── Upload ──
+    uploadBtn.addEventListener('click', function() {
+        if (!selectedFile) return;
+        startUpload(selectedFile);
+    });
+
+    function startUpload(file) {
+        // Show progress area, hide form
+        formArea.style.display = 'none';
+        progressArea.style.display = 'block';
+        errorArea.style.display = 'none';
+        document.getElementById('upload-progress-file').textContent = file.name;
+        document.getElementById('upload-progress-label').textContent = 'Uploading...';
+
+        var xhr = new XMLHttpRequest();
+        var formData = new FormData();
+        formData.append('file', file);
+
+        var startTime = Date.now();
+        var lastLoaded = 0;
+
+        xhr.upload.addEventListener('progress', function(e) {
+            if (e.lengthComputable) {
+                var pct = Math.round((e.loaded / e.total) * 100);
+                var elapsed = (Date.now() - startTime) / 1000;
+                var speed = e.loaded / (elapsed * 1024); // KB/s
+                var remaining = ((e.total - e.loaded) / (speed * 1024));
+
+                document.getElementById('upload-progress-bar').value = pct;
+                document.getElementById('upload-percent').textContent = pct + '%';
+
+                if (elapsed > 2) {
+                    var speedStr = speed > 1024
+                        ? (speed / 1024).toFixed(1) + ' MB/s'
+                        : speed.toFixed(0) + ' KB/s';
+                    document.getElementById('upload-speed').textContent = speedStr;
+                } else {
+                    document.getElementById('upload-speed').textContent = 'Starting...';
+                }
+            }
+        });
+
+        xhr.addEventListener('load', function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    var resp = JSON.parse(xhr.responseText);
+                    if (resp.jobId) {
+                        document.getElementById('upload-progress-bar').value = 100;
+                        document.getElementById('upload-percent').textContent = '100%';
+                        document.getElementById('upload-speed').textContent = 'Complete';
+                        document.getElementById('upload-progress-label').textContent = 'Upload complete!';
+                        document.getElementById('upload-progress-label').className = 'has-text-weight-bold has-text-success';
+
+                        // Transition to processing immediately
+                        transitionToProcessing(resp.jobId, file.name, file.size, file.type);
+                    } else if (resp.error) {
+                        showUploadError(resp.error);
+                    }
+                } catch (e) {
+                    showUploadError('Unexpected server response. Please try again.');
+                }
+            } else {
+                try {
+                    var errResp = JSON.parse(xhr.responseText);
+                    showUploadError(errResp.error || 'Upload failed (HTTP ' + xhr.status + ')');
+                } catch (e) {
+                    showUploadError('Upload failed (HTTP ' + xhr.status + ')');
+                }
+            }
+        });
+
+        xhr.addEventListener('error', function() {
+            showUploadError('Network error - please check your connection');
+        });
+
+        xhr.open('POST', '/api/upload', true);
+        xhr.send(formData);
+    }
+
+    // ── Processing Phase Display ──
+    function transitionToProcessing(jobId, fileName, fileSize, fileType) {
+        currentJobId = jobId;
+        progressArea.style.display = 'none';
+        processingArea.style.display = 'block';
+        document.getElementById('processing-file-name').textContent = fileName;
+
+        var details = [];
+        if (fileSize) details.push(formatFileSize(fileSize));
+        if (fileType) {
+            var simpleType = fileType.replace('video/', '').toUpperCase();
+            details.push(simpleType);
+        }
+        var detailsEl = document.getElementById('processing-file-details');
+        if (detailsEl && details.length > 0) {
+            detailsEl.textContent = details.join(' · ');
+        }
+
+        // Show initial state with detailed messages
+        setPhaseState('phase-extract', 'active', 'Starting...');
+        var initBar = document.getElementById('phase-progress-bar');
+        if (initBar) initBar.value = 0;
+        document.getElementById('phase-active-label').textContent = 'Queued for processing';
+        setDetailMessage('Preparing video file for extraction...');
+        document.getElementById('phase-percent').textContent = '0%';
+
+        // Start polling
+        pollInterval = setInterval(function() { pollJobProgress(jobId); }, 2000);
+        pollJobProgress(jobId); // immediate first poll
+    }
+
+    function setDetailMessage(msg) {
+        var el = document.getElementById('phase-detail-message');
+        if (el) el.textContent = msg;
+    }
+
+    function setPhaseState(elementId, state, statusText) {
+        var el = document.getElementById(elementId);
+        if (!el) return;
+        el.className = 'phase-item';
+        if (state === 'active') el.classList.add('active');
+        else if (state === 'done') el.classList.add('done');
+        el.querySelector('.phase-dot').className = 'phase-dot ' + state;
+        var statusEl = el.querySelector('.phase-status');
+        if (statusText) statusEl.textContent = statusText;
+    }
+
+    function updatePhaseProgress(phasePercent) {
+        var bar = document.getElementById('phase-progress-bar');
+        if (bar) bar.value = phasePercent;
+        document.getElementById('phase-percent').textContent = phasePercent + '%';
+    }
+
+    function setPhaseLabel(text) {
+        document.getElementById('phase-active-label').textContent = text;
+    }
+
+    function onProcessingDone(jobId) {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+        hideUploadLiveTranscription();
+
+        // Show navigation links based on current status
+        fetch('/job/' + jobId + '/progress')
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                var doneArea = document.getElementById('processing-done-area');
+                var doneContent = document.getElementById('processing-done-content');
+                doneArea.style.display = 'block';
+
+                // Check status from the response
+                if (html.indexOf('SUGGESTIONS_READY') > -1) {
+                    doneContent.innerHTML =
+                        '<p class="subtitle has-text-info">Processing complete! Clip suggestions are ready.</p>' +
+                        '<div class="buttons is-centered" style="margin-top: 12px;">' +
+                        '<a class="button is-primary is-large" href="/job/' + jobId + '/suggestions">Review &amp; Select Clips</a>' +
+                        '<a class="button is-outlined" href="/job/' + jobId + '">View Job</a>' +
+                        '</div>';
+                } else if (html.indexOf('TRANSCRIPTION_REVIEW') > -1) {
+                    doneContent.innerHTML =
+                        '<p class="subtitle has-text-info">Transcription complete! Review before AI analysis.</p>' +
+                        '<div class="buttons is-centered" style="margin-top: 12px;">' +
+                        '<a class="button is-info is-large" href="/job/' + jobId + '/transcription">Review Transcript</a>' +
+                        '<a class="button is-outlined" href="/job/' + jobId + '">View Job</a>' +
+                        '</div>';
+                } else if (html.indexOf('COMPLETED') > -1) {
+                    doneContent.innerHTML =
+                        '<p class="subtitle has-text-success">All done! Your clips are ready.</p>' +
+                        '<div class="buttons is-centered" style="margin-top: 12px;">' +
+                        '<a class="button is-primary is-large" href="/job/' + jobId + '/results">View Results</a>' +
+                        '<a class="button is-outlined" href="/job/' + jobId + '">View Job</a>' +
+                        '</div>';
+                } else if (html.indexOf('FAILED') > -1) {
+                    doneContent.innerHTML =
+                        '<p class="subtitle has-text-danger">Processing failed.</p>' +
+                        '<div class="buttons is-centered" style="margin-top: 12px;">' +
+                        '<a class="button is-info" href="/job/' + jobId + '">View Details</a>' +
+                        '</div>';
+                } else {
+                    doneContent.innerHTML =
+                        '<div class="buttons is-centered" style="margin-top: 12px;">' +
+                        '<a class="button is-primary" href="/job/' + jobId + '">View Job Details</a>' +
+                        '</div>';
+                }
+            });
+    }
+
+    // ── Live transcription on upload page ──
+
+    var uploadChunkTimer = null;
+    var uploadLastChunkIndex = -1;
+    var uploadTranscribing = false;
+
+    function showUploadLiveTranscription(jobId) {
+        var container = document.getElementById('upload-live-transcription');
+        if (!container) return;
+        var vid = document.getElementById('upload-review-video');
+        if (vid && !vid.src) {
+            vid.src = '/job/' + jobId + '/video';
+        }
+        container.style.display = 'block';
+        container.dataset.jobId = jobId;
+
+        // Volume persistence
+        var savedVol = localStorage.getItem('ovc-upload-volume');
+        if (savedVol !== null && vid) {
+            var v = parseFloat(savedVol);
+            if (!isNaN(v) && v >= 0 && v <= 1) vid.volume = v;
+        }
+        if (vid) {
+            vid.addEventListener('volumechange', function() {
+                localStorage.setItem('ovc-upload-volume', vid.volume);
+            });
+        }
+
+        if (!uploadTranscribing) {
+            uploadTranscribing = true;
+            uploadLastChunkIndex = -1;
+            uploadFetchChunks(jobId);
+        }
+    }
+
+    function hideUploadLiveTranscription() {
+        uploadTranscribing = false;
+        if (uploadChunkTimer) {
+            clearTimeout(uploadChunkTimer);
+            uploadChunkTimer = null;
+        }
+        var container = document.getElementById('upload-live-transcription');
+        if (container) container.style.display = 'none';
+    }
+
+    function uploadFetchChunks(jobId) {
+        if (!uploadTranscribing) return;
+        var contentEl = document.getElementById('upload-transcript-content');
+        if (!contentEl) return;
+
+        // Find last appended chunk block from the DOM
+        var lastChunk = contentEl.querySelector('.transcript-chunk:last-child');
+        var since = lastChunk ? parseInt(lastChunk.dataset.chunkIndex) : -1;
+        if (since > uploadLastChunkIndex) uploadLastChunkIndex = since;
+
+        fetch('/job/' + jobId + '/transcription/chunks?since=' + uploadLastChunkIndex)
+            .then(function(r) { return r.json(); })
+            .then(function(chunks) {
+                if (chunks.length > 0) {
+                    chunks.sort(function(a, b) { return a.index - b.index; });
+                    chunks.forEach(function(chunk) {
+                        if (chunk.index > uploadLastChunkIndex) {
+                            uploadAppendChunk(chunk);
+                            uploadLastChunkIndex = chunk.index;
+                        }
+                    });
+                }
+                if (uploadTranscribing) {
+                    uploadChunkTimer = setTimeout(function() { uploadFetchChunks(jobId); }, 2000);
+                }
+            })
+            .catch(function() {
+                if (uploadTranscribing) {
+                    uploadChunkTimer = setTimeout(function() { uploadFetchChunks(jobId); }, 3000);
+                }
+            });
+    }
+
+    function formatTimeRange(secA, secB) {
+        function fmt(s) {
+            var total = Math.round(s);
+            return Math.floor(total / 60) + ':' + (total % 60).toString().padStart(2, '0');
+        }
+        return fmt(secA) + ' - ' + fmt(secB);
+    }
+
+    function uploadAppendChunk(chunk) {
+        var contentEl = document.getElementById('upload-transcript-content');
+        if (!contentEl) return;
+
+        // Skip silent segments (no transcribed text)
+        if (!chunk.text || !chunk.text.trim()) return;
+
+        var waiting = contentEl.querySelector('.has-text-grey.has-text-centered');
+        if (waiting) waiting.remove();
+
+        var div = document.createElement('div');
+        div.className = 'transcript-chunk';
+        div.dataset.chunkIndex = chunk.index;
+        div.dataset.start = chunk.start;
+        div.dataset.end = chunk.end;
+
+        var label = document.createElement('span');
+        label.className = 'chunk-label';
+        label.textContent = formatTimeRange(chunk.start, chunk.end);
+
+        var text = document.createElement('span');
+        text.className = 'chunk-text';
+        text.textContent = chunk.text || '';
+
+        div.appendChild(label);
+        div.appendChild(text);
+
+        div.addEventListener('mouseenter', uploadChunkHover);
+        div.addEventListener('mouseleave', uploadChunkLeave);
+        div.addEventListener('click', uploadChunkClick);
+
+        contentEl.appendChild(div);
+        contentEl.scrollTop = contentEl.scrollHeight;
+    }
+
+    var uploadActiveChunk = null;
+
+    function uploadChunkHover(ev) {
+        var chunk = ev.currentTarget;
+        uploadActiveChunk = chunk;
+        var start = parseFloat(chunk.dataset.start);
+        var end = parseFloat(chunk.dataset.end);
+        if (isNaN(start)) return;
+        var tooltip = document.getElementById('upload-word-tooltip');
+        var label = document.getElementById('upload-word-time-label');
+        var hint = document.getElementById('upload-word-tooltip-hint');
+        if (label) label.textContent = formatTimeRange(start, end);
+        if (hint) hint.textContent = 'Click to seek';
+        if (tooltip) tooltip.style.display = 'block';
+    }
+
+    function uploadChunkLeave(ev) {
+        var chunk = ev.currentTarget;
+        if (uploadActiveChunk === chunk) uploadActiveChunk = null;
+        var tooltip = document.getElementById('upload-word-tooltip');
+        if (tooltip && !uploadActiveChunk) {
+            var stillHovering = tooltip.querySelector('.transcript-chunk:hover');
+            if (!stillHovering) {
+                tooltip.style.display = 'none';
+            }
+        }
+    }
+
+    function uploadChunkClick(ev) {
+        var chunk = ev.currentTarget;
+        var start = parseFloat(chunk.dataset.start);
+        if (isNaN(start)) return;
+        var vid = document.getElementById('upload-review-video');
+        if (!vid) return;
+        vid.currentTime = start;
+        vid.play();
+    }
+
+    // ─── Video timeupdate — auto-highlight current chunk ───
+    (function() {
+        var uploadVid = document.getElementById('upload-review-video');
+        if (!uploadVid) return;
+        uploadVid.addEventListener('timeupdate', function() {
+            var t = uploadVid.currentTime;
+            var chunks = document.querySelectorAll('#upload-transcript-content .transcript-chunk');
+            chunks.forEach(function(ch) {
+                var cs = parseFloat(ch.dataset.start);
+                var ce = parseFloat(ch.dataset.end);
+                if (t >= cs && t < ce) {
+                    ch.classList.add('active');
+                } else {
+                    ch.classList.remove('active');
+                }
+            });
+        });
+    })();
+
+    function parseProgress(doc) {
+        // Try progress-bar-value (Bulma <progress> element)
+        var bar = doc.getElementById('progress-bar-value');
+        if (bar) {
+            var v = parseInt(bar.getAttribute('value'));
+            if (!isNaN(v)) return v;
+        }
+        // Try the tabular-nums span (percentage text)
+        var numSpan = doc.querySelector('[style*="tabular-nums"]');
+        if (numSpan) {
+            var m = numSpan.textContent.match(/(\d+)%/);
+            if (m) return parseInt(m[1]);
+        }
+        return 0;
+    }
+
+    function pollJobProgress(jobId) {
+        fetch('/job/' + jobId + '/progress')
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+
+                var progressEl = doc.getElementById('job-progress');
+                if (!progressEl) {
+                    onProcessingDone(jobId);
+                    return;
+                }
+
+                var status = progressEl.getAttribute('data-job-status') || '';
+
+                // Read phase from data attribute (authoritative)
+                var rawPhase = '';
+                var phaseLabel = '';
+                var phaseEl = doc.querySelector('[data-processing-phase]');
+                if (phaseEl) {
+                    rawPhase = phaseEl.getAttribute('data-processing-phase');
+                    phaseLabel = phaseEl.getAttribute('data-processing-phase-label') || '';
+                }
+
+                var pct = parseProgress(doc);
+
+                // Use rawPhase from backend as authoritative source
+                if (rawPhase === 'extracting_audio') {
+                    setPhaseState('phase-extract', 'active', pct + '%');
+                    setPhaseState('phase-transcribe', 'pending', 'Waiting...');
+                    setPhaseState('phase-analyze', 'pending', 'Waiting...');
+                    updatePhaseProgress(pct);
+                    setPhaseLabel(phaseLabel || 'Converting video to audio...');
+                    if (pct < 30) {
+                        setDetailMessage('Analyzing video container and streams...');
+                    } else if (pct < 60) {
+                        setDetailMessage('Extracting audio track from video...');
+                    } else if (pct < 90) {
+                        setDetailMessage('Encoding extracted audio...');
+                    } else {
+                        setDetailMessage('Finalizing audio extraction...');
+                    }
+                }
+                else if (rawPhase === 'transcribing') {
+                    setPhaseState('phase-extract', 'done', 'Complete');
+                    setPhaseState('phase-transcribe', 'active', pct + '%');
+                    setPhaseState('phase-analyze', 'pending', 'Waiting...');
+                    updatePhaseProgress(pct);
+                    setPhaseLabel(phaseLabel || 'Transcribing audio...');
+                    if (pct < 30) {
+                        setDetailMessage('Loading transcription model...');
+                    } else if (pct < 60) {
+                        setDetailMessage('Processing audio in ' + CHUNK_SECONDS + 's segments...');
+                    } else if (pct < 90) {
+                        setDetailMessage('Refining transcription output...');
+                    } else {
+                        setDetailMessage('Finalizing transcript...');
+                    }
+                    showUploadLiveTranscription(jobId);
+                }
+                else if (rawPhase === 'analyzing' || rawPhase.startsWith('analyzing_') || rawPhase.startsWith('refining_')) {
+                    setPhaseState('phase-extract', 'done', 'Complete');
+                    setPhaseState('phase-transcribe', 'done', 'Complete');
+                    setPhaseState('phase-analyze', 'active', pct + '%');
+                    updatePhaseProgress(pct);
+                    setPhaseLabel(phaseLabel || 'Analyzing content with AI...');
+
+                    if (rawPhase.startsWith('analyzing_segment_')) {
+                        var segInfo = rawPhase.replace('analyzing_segment_', '').replace(/_/g, ' ');
+                        setDetailMessage('Segment ' + segInfo + ' — scanning for highlights');
+                    } else if (rawPhase.startsWith('refining_pass_')) {
+                        var passNum = rawPhase.replace('refining_pass_', '');
+                        setDetailMessage('Multi-pass refinement #' + passNum + ' — merging overlaps & re-ranking');
+                    } else if (pct < 20) {
+                        setDetailMessage('Scanning transcript for key moments...');
+                    } else if (pct < 50) {
+                        setDetailMessage('Running AI analysis on identified segments...');
+                    } else if (pct < 80) {
+                        setDetailMessage('Cross-referencing clip suggestions...');
+                    } else {
+                        setDetailMessage('Ranking and merging highlight candidates...');
+                    }
+                }
+                else if (status === 'TRANSCRIPTION_REVIEW') {
+                    setPhaseState('phase-extract', 'done', 'Complete');
+                    setPhaseState('phase-transcribe', 'done', 'Complete');
+                    setPhaseState('phase-analyze', 'active', 'Starting...');
+                    updatePhaseProgress(0);
+                    setPhaseLabel('Transcription complete, starting AI analysis...');
+                    setDetailMessage('Preparing transcript for analysis...');
+                    showUploadLiveTranscription(jobId);
+                    // Keep polling — processing auto-continues to analysis
+                }
+                else if (status === 'SUGGESTIONS_READY' || status === 'COMPLETED') {
+                    setPhaseState('phase-extract', 'done', 'Complete');
+                    setPhaseState('phase-transcribe', 'done', 'Complete');
+                    setPhaseState('phase-analyze', 'done', 'Complete');
+                    updatePhaseProgress(100);
+                    setPhaseLabel('Complete!');
+                    onProcessingDone(jobId);
+                }
+                else if (status === 'FAILED') {
+                    setPhaseState('phase-extract', 'done', 'Complete');
+                    setPhaseState('phase-transcribe', 'done', 'Complete');
+                    setPhaseState('phase-analyze', 'done', 'Complete');
+                    updatePhaseProgress(0);
+                    setPhaseLabel('Processing failed');
+                    onProcessingDone(jobId);
+                }
+                else if (status === 'CLIPPING' || status === 'UPLOADED') {
+                    // Continue polling
+                }
+            })
+            .catch(function(err) {
+                console.warn('Progress poll failed:', err);
+            });
+    }
+
+    // ── Helpers ──
+    function showUploadError(msg) {
+        progressArea.style.display = 'none';
+        processingArea.style.display = 'none';
+        errorArea.style.display = 'block';
+        errorArea.innerHTML =
+            '<div class="notification is-danger upload-error">' +
+            '<button class="delete" onclick="this.parentElement.parentElement.style.display=\'none\'; document.getElementById(\'upload-form-area\').style.display=\'block\'; document.getElementById(\'upload-btn\').disabled=false;"></button>' +
+            '<p><strong>Upload failed</strong></p><p>' + escapeHtml(msg) + '</p>' +
+            '</div>';
+        uploadBtn.disabled = false;
+    }
+
+    function hideUploadError() {
+        errorArea.style.display = 'none';
+    }
+
+    function escapeHtml(text) {
+        var d = document.createElement('div');
+        d.textContent = text;
+        return d.innerHTML;
+    }
+})();
+</script>
+{/}
+{/include}

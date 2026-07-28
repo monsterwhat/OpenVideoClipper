@@ -1,0 +1,57 @@
+<div class="card suggestion-card {#if s.isSelected}selected{/if}"
+     data-suggestion-id="{s.id}"
+     hx-post="/job/{s.job.id}/suggestions/{s.id}/toggle"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-indicator="closest .column">
+    <div class="suggestion-loading has-text-centered" style="padding: 2rem;">
+        <progress class="progress is-small is-primary" max="100"></progress>
+        <p class="is-size-7 has-text-grey">Updating...</p>
+    </div>
+    <div class="card-content">
+        <div class="media">
+            <div class="media-left" style="align-self: flex-start;">
+                <span class="icon has-text-{#if s.isSelected}success{#else}grey{/if}" style="cursor: default;">
+                    {#if s.isSelected}
+                    <span>✓</span>
+                    {#else}
+                    <span>○</span>
+                    {/if}
+                </span>
+            </div>
+            <div class="media-content">
+                <p class="title is-5">
+                    {s.title}
+                    {#if s.isLocked}
+                    <span class="tag is-info is-light is-small">locked</span>
+                    {/if}
+                </p>
+                <p class="subtitle is-6 has-text-grey">
+                    {s.formattedStart} - {s.formattedEnd}
+                    <span class="tag is-light">{s.formattedDuration}</span>
+                </p>
+            </div>
+            <div class="media-right" style="display: flex; flex-direction: column; gap: 0.25rem;">
+                <button class="button is-small {#if s.isLocked}is-info{/if}"
+                        hx-post="/job/{s.job.id}/suggestions/{s.id}/lock"
+                        hx-target="closest .suggestion-card"
+                        hx-swap="outerHTML"
+                        title="{#if s.isLocked}Unlock to allow re-analysis to replace{/if}">
+                    {#if s.isLocked}
+                    <span class="icon is-small"><span>L</span></span>
+                    {#else}
+                    <span class="icon is-small"><span>-</span></span>
+                    {/if}
+                </button>
+            </div>
+        </div>
+        <div class="content">
+            <p class="is-size-7">{s.reason}</p>
+            {#if s.confidenceScore}
+            <progress class="progress is-small is-link" value="{s.confidencePercent}" max="100">
+                {s.confidencePercent}%
+            </progress>
+            {/if}
+        </div>
+    </div>
+</div>

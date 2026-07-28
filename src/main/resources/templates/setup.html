@@ -1,0 +1,159 @@
+{#include base.html}
+{#pageTitle}Open Video Clipper - Setup{/}
+
+{#content}
+<div class="columns is-centered">
+    <div class="column is-half">
+        <div class="box">
+            <h1 class="title has-text-centered">Open Video Clipper Setup</h1>
+            <p class="subtitle has-text-centered has-text-grey">Configure your storage and AI settings</p>
+
+            <h2 class="title is-5">Prerequisites</h2>
+            <div id="prereq-list">
+                {#for prereq in prereqs}
+                {#include fragments/prereqCheck.html /}
+                {/for}
+            </div>
+
+            <hr>
+
+            <form method="POST" action="/setup">
+                <div class="field">
+                    <label class="label">Storage Location</label>
+                    <div class="control has-icons-right">
+                        <input class="input" type="text" name="storagePath"
+                               value="{config.storagePath}" id="storagePathInput" readonly required>
+                        <button class="button is-small is-link" type="button" 
+                                onclick="openStorageModal()">Browse</button>
+                    </div>
+                    <p class="help">Videos, audio, and clips will be stored here</p>
+                </div>
+
+
+                <div class="field">
+                    <label class="label">Ollama URL</label>
+                    <div class="control has-icons-right">
+                        <input class="input" type="text" name="ollamaUrl"
+                                value="{config.ollamaUrl}" placeholder="http://localhost:11434" id="ollamaUrlInput">
+                                <button class="button is-small is-info" type="button"
+                                        hx-post="/setup/test-ollama"
+                                        hx-vals='js:\{ollamaUrl: document.getElementById("ollamaUrlInput").value}'
+                                        hx-target="#ollamaModelSelect"
+                                        hx-swap="innerHTML">
+                                    Test &amp; Load Models
+                                </button>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label">Ollama Model</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select name="ollamaModel" id="ollamaModelSelect">
+                                <option value="{config.ollamaModel}" selected>{config.ollamaModel}</option>
+                                <option value="">-- Test connection to load available models --</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label">Transcription Provider</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select name="provider">
+                                {#for p in providerOptions}
+                                 <option value="{p.id}" {#if config.transcriptionProvider == p.id}selected{/if}>
+                                    {p.displayName}
+                                </option>
+                                {/for}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field has-text-centered" style="margin-top: 20px;">
+                    <button class="button is-primary is-large is-fullwidth" type="submit">
+                        Save &amp; Start Using Open Video Clipper
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="storageModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-background" onclick="closeStorageModal()"></div>
+    <div class="modal-card">
+        <header class="modal-card-head">
+            <p class="modal-card-title" id="modalTitle">Select Storage Directory</p>
+            <button class="delete" onclick="closeStorageModal()" aria-label="Close modal"></button>
+        </header>
+        <section class="modal-card-body" style="max-height: 60vh; overflow-y: auto;">
+            <div id="storageTree"></div>
+        </section>
+        <footer class="modal-card-foot">
+            <button class="button" onclick="closeStorageModal()" id="modalCancelBtn">Cancel</button>
+        </footer>
+    </div>
+</div>
+
+<script>
+var lastFocusedElement = null;
+
+function openStorageModal() {
+    const modal = document.getElementById('storageModal');
+    lastFocusedElement = document.activeElement;
+    modal.classList.add('is-active');
+    const currentPath = document.getElementById('storagePathInput').value || '/';
+    loadTree(currentPath);
+    setTimeout(function() {
+        var focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (focusable.length > 0) focusable[0].focus();
+    }, 100);
+}
+
+function closeStorageModal() {
+    const modal = document.getElementById('storageModal');
+    modal.classList.remove('is-active');
+    if (lastFocusedElement) {
+        lastFocusedElement.focus();
+        lastFocusedElement = null;
+    }
+}
+
+function loadTree(path) {
+    htmx.ajax('GET', '/setup/browse?path=' + encodeURIComponent(path), {target: '#storageTree', swap: 'innerHTML'});
+}
+
+document.addEventListener('keydown', function(e) {
+    const modal = document.getElementById('storageModal');
+    if (!modal.classList.contains('is-active')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        closeStorageModal();
+        return;
+    }
+
+    if (e.key === 'Tab') {
+        var focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (focusable.length === 0) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+            if (document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            }
+        } else {
+            if (document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+    }
+});
+</script>
+{/}
+{/include}

@@ -1,0 +1,258 @@
+{#include base.html}
+{#pageTitle}Job: {job.originalFilename}{/}
+
+{#content}
+<nav class="breadcrumb" aria-label="breadcrumbs">
+    <ul>
+        <li><a href="/">Home</a></li>
+        <li class="is-active"><a href="#">{job.originalFilename}</a></li>
+    </ul>
+</nav>
+
+<div class="box">
+    <div class="level">
+        <div class="level-left">
+            <div>
+                <h1 class="title">{job.originalFilename}</h1>
+                <p class="has-text-grey">
+                    Created: {job.createdAt.toString().substring(0, 19)}
+                    {#if job.durationSeconds}
+                    &middot; Duration: {formattedDuration}
+                    {/if}
+                </p>
+            </div>
+        </div>
+        <div class="level-right">
+            <div class="buttons">
+                {#include fragments/statusBar.html /}
+                <form method="POST" action="/job/{job.id}/delete" hx-confirm="Delete this job and all its files?" style="display:inline">
+                    <button class="button is-danger is-small" type="submit">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="job-status-area">
+        {#include fragments/jobProgressFragment.html /}
+    </div>
+</div>
+
+<!-- Live transcription review area — always rendered, shown when status is TRANSCRIBING or TRANSCRIPTION_REVIEW -->
+<div id="live-transcription-container" data-job-id="{job.id}"
+     style="display: {#if job.status.name == 'TRANSCRIBING' || job.status.name == 'TRANSCRIPTION_REVIEW'}block{#else}none{/if};">
+    {#include fragments/liveTranscriptionFragment.html /}
+</div>
+{/}
+
+<script>
+(function() {
+    var jobId = '{job.id}';
+    if (!jobId) return;
+    var prevPhase = '';
+    var prevStatus = '';
+    var evtSource = null;
+    var isDestroyed = false;
+
+    var STEP_LABELS = ['Upload', 'Transcribe', 'Analyze', 'Clips', 'Done'];
+    var ORDER_MAP = {
+        UPLOADED: 1, TRANSCRIBING: 2, TRANSCRIPTION_REVIEW: 3,
+        ANALYZING: 3, SUGGESTIONS_READY: 4, CLIPPING: 5, COMPLETED: 6
+    };
+
+    function computeStepStates(status) {
+        var order = ORDER_MAP[status] || 0;
+        return STEP_LABELS.map(function(label, i) {
+            if (order === 0) return 'failed';
+            if (i + 1 < order) return 'completed';
+            if (i + 1 === order) return 'active';
+            return 'pending';
+        });
+    }
+
+    function stepIconHtml(state) {
+        if (state === 'completed') return '<span class="step-icon">&#10003;</span>';
+        if (state === 'active')  return '<span class="step-icon"></span>';
+        if (state === 'failed')  return '<span class="step-icon">&#10007;</span>';
+        return '<span class="step-icon"></span>';
+    }
+
+    function updateProgressSteps(status) {
+        var states = computeStepStates(status);
+        var localSteps = document.querySelectorAll('#job-progress .progress-step');
+        for (var i = 0; i < localSteps.length && i < states.length; i++) {
+            var expectedCls = 'progress-step ' + states[i];
+            if (localSteps[i].className !== expectedCls) {
+                localSteps[i].className = expectedCls;
+            }
+            var indicator = localSteps[i].querySelector('.step-indicator');
+            if (indicator) {
+                indicator.innerHTML = stepIconHtml(states[i]);
+            }
+        }
+    }
+
+    function updateProgressBar(progress, phase) {
+        var bar = document.getElementById('progress-bar-value');
+        if (!bar) return;
+        bar.value = String(progress);
+        bar.max = '100';
+        bar.textContent = progress + '%';
+
+        var colorClass = 'is-primary';
+        if (phase === 'extracting_audio') colorClass = 'is-warning';
+        else if (phase === 'transcribing') colorClass = 'is-info';
+        else if (phase && phase.indexOf('analyzing') === 0) colorClass = 'is-link';
+        var oldClass = Array.from(bar.classList).find(function(c) { return c.startsWith('is-'); });
+        if (oldClass && oldClass !== colorClass) bar.classList.replace(oldClass, colorClass);
+        else if (!oldClass) bar.classList.add(colorClass);
+    }
+
+    function updatePhaseLabel(phaseLabel, phaseDetailLabel, phaseSubLabel) {
+        var labelEl = document.getElementById('phase-active-label');
+        if (labelEl) labelEl.textContent = phaseLabel || '';
+        var percentEl = document.getElementById('phase-percent');
+        if (percentEl) {
+            var bar = document.getElementById('progress-bar-value');
+            percentEl.textContent = (bar ? bar.value : '0') + '%';
+        }
+        var detailMsg = document.getElementById('phase-detail-message');
+        if (detailMsg) {
+            var detailParts = [];
+            if (phaseDetailLabel) detailParts.push(phaseDetailLabel);
+            if (phaseSubLabel) detailParts.push(phaseSubLabel);
+            detailMsg.textContent = detailParts.join(' - ');
+        }
+    }
+
+    var STATUS_BADGE_MAP = {
+        UPLOADED: { text: 'Uploaded', cls: 'is-warning' },
+        TRANSCRIBING: { text: 'Transcribing...', cls: 'is-info pulsing' },
+        TRANSCRIPTION_REVIEW: { text: 'Review Transcription', cls: 'is-warning' },
+        ANALYZING: { text: 'Analyzing...', cls: 'is-info pulsing' },
+        SUGGESTIONS_READY: { text: 'Suggestions Ready', cls: 'is-link' },
+        CLIPPING: { text: 'Clipping...', cls: 'is-info pulsing' },
+        COMPLETED: { text: 'Completed', cls: 'is-success' },
+        FAILED: { text: 'Failed', cls: 'is-danger' }
+    };
+
+    function updateStatusBadge(status) {
+        var badge = document.querySelector('.status-badge');
+        if (!badge) return;
+        var entry = STATUS_BADGE_MAP[status];
+        if (!entry) return;
+        badge.textContent = entry.text;
+        var tagClasses = ['tag', 'is-medium', 'status-badge'];
+        entry.cls.split(' ').forEach(function(c) { tagClasses.push(c); });
+        badge.className = tagClasses.join(' ');
+    }
+
+    function showLiveTranscription(status) {
+        var ltc = document.getElementById('live-transcription-container');
+        if (!ltc) return;
+        var visible = (status === 'TRANSCRIBING' || status === 'TRANSCRIPTION_REVIEW');
+        var wasHidden = ltc.style.display === 'none' || ltc.style.display === '';
+        ltc.style.display = visible ? 'block' : 'none';
+        if (visible && wasHidden) {
+            var ltContainer = document.getElementById('live-transcription');
+            if (ltContainer) {
+                ltContainer.dispatchEvent(new CustomEvent('ovc:refresh-chunks'));
+            }
+        }
+    }
+
+    function swapStatusContent(html) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+        var remoteContentArea = doc.getElementById('status-content-area');
+        var localContentArea = document.getElementById('status-content-area');
+        if (remoteContentArea && localContentArea) {
+            localContentArea.innerHTML = remoteContentArea.innerHTML;
+        }
+    }
+
+    function handleStateEvent(data) {
+        if (isDestroyed) return;
+        var status = data.status || '';
+        var phase = data.phase || '';
+        var progress = data.progress || 0;
+
+        var progressEl = document.getElementById('job-progress');
+        if (progressEl) {
+            progressEl.setAttribute('data-job-status', status);
+            progressEl.setAttribute('data-processing-phase', phase);
+        }
+
+        updateProgressSteps(status);
+        updateStatusBadge(status);
+
+        var showProgress = (status === 'UPLOADED' || status === 'TRANSCRIBING' || status === 'ANALYZING' || status === 'CLIPPING');
+        var progressDisplay = document.getElementById('progress-display');
+        if (progressDisplay) progressDisplay.style.display = showProgress ? 'block' : 'none';
+
+        updateProgressBar(progress, phase);
+        updatePhaseLabel(data.phaseLabel, data.phaseDetailLabel, data.phaseSubLabel);
+        showLiveTranscription(status);
+
+        var phaseChanged = phase !== prevPhase;
+        var statusChanged = status !== prevStatus;
+        if ((phaseChanged || statusChanged) && data.statusContentHtml) {
+            swapStatusContent(data.statusContentHtml);
+        }
+        prevPhase = phase;
+        prevStatus = status;
+
+        // Dispatch state to live-transcription container
+        var ltContainer = document.getElementById('live-transcription');
+        if (ltContainer) {
+            ltContainer.dispatchEvent(new CustomEvent('ovc:state', { detail: data }));
+        }
+    }
+
+    function handleDoneEvent(data) {
+        if (evtSource) { evtSource.close(); evtSource = null; }
+        if (data && data.status) {
+            handleStateEvent({ status: data.status, phase: '', progress: 100, phaseLabel: '', phaseDetailLabel: '', phaseSubLabel: '' });
+        }
+    }
+
+    function connectSSE() {
+        if (isDestroyed) return;
+        if (evtSource) evtSource.close();
+        evtSource = new EventSource('/job/' + jobId + '/events');
+        evtSource.addEventListener('state', function(e) {
+            try { handleStateEvent(JSON.parse(e.data)); } catch (err) { console.warn('[sse] state parse error:', err); }
+        });
+        evtSource.addEventListener('chunk', function(e) {
+            try {
+                var data = JSON.parse(e.data);
+                var ltContainer = document.getElementById('live-transcription');
+                if (ltContainer) {
+                    ltContainer.dispatchEvent(new CustomEvent('ovc:chunk', { detail: data }));
+                }
+            } catch (err) { console.warn('[sse] chunk parse error:', err); }
+        });
+        evtSource.addEventListener('done', function(e) {
+            try { handleDoneEvent(JSON.parse(e.data)); } catch (err) { console.warn('[sse] done parse error:', err); }
+        });
+        evtSource.addEventListener('error', function() {
+            if (isDestroyed) return;
+            if (evtSource) evtSource.close();
+            evtSource = null;
+            setTimeout(connectSSE, 3000);
+        });
+    }
+
+    function cleanup() {
+        isDestroyed = true;
+        if (evtSource) { evtSource.close(); evtSource = null; }
+    }
+
+    document.body.addEventListener('htmx:beforeSwap', function(event) {
+        if (event.detail.target === document.body) { cleanup(); }
+    });
+    window.addEventListener('beforeunload', cleanup);
+
+    connectSSE();
+})();
+</script>
+{/include}

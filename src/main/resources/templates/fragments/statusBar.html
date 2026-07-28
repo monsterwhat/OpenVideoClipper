@@ -1,0 +1,19 @@
+{#if job}
+    {#if job.status.name == 'UPLOADED'}
+    <span class="tag is-warning is-medium status-badge">Uploaded</span>
+    {#else if job.status.name == 'TRANSCRIBING'}
+    <span class="tag is-info is-medium status-badge pulsing">Transcribing...</span>
+    {#else if job.status.name == 'TRANSCRIPTION_REVIEW'}
+    <span class="tag is-warning is-medium status-badge">Review Transcription</span>
+    {#else if job.status.name == 'ANALYZING'}
+    <span class="tag is-info is-medium status-badge pulsing">Analyzing...</span>
+    {#else if job.status.name == 'SUGGESTIONS_READY'}
+    <span class="tag is-link is-medium status-badge">Suggestions Ready</span>
+    {#else if job.status.name == 'CLIPPING'}
+    <span class="tag is-info is-medium status-badge pulsing">Clipping...</span>
+    {#else if job.status.name == 'COMPLETED'}
+    <span class="tag is-success is-medium status-badge">Completed</span>
+    {#else if job.status.name == 'FAILED'}
+    <span class="tag is-danger is-medium status-badge">Failed</span>
+    {/if}
+{/if}

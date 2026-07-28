@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{#insert pageTitle}Open Video Clipper{/}</title>
+<link rel="stylesheet" href="/css/bulma.min.css">
+<script src="https://unpkg.com/htmx.org@2.0.4"
+        integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="/css/ovc.css">
+    <script src="/js/state.js"></script>
+    <script src="/js/ovc.js"></script>
+    <script>
+        (function() {
+            var theme = localStorage.getItem('ovc-theme');
+            if (!theme) {
+                theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-theme', theme);
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+                if (!localStorage.getItem('ovc-theme')) {
+                    document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+                }
+            });
+        })();
+    </script>
+</head>
+<body>
+    <div id="toast-container"></div>
+    <nav class="navbar is-dark" role="navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="/">
+                <strong>Open Video Clipper</strong>
+            </a>
+            <a role="button" class="navbar-burger" data-target="navMenu">
+                <span></span><span></span><span></span>
+            </a>
+        </div>
+        <div class="navbar-menu" id="navMenu">
+            <div class="navbar-start">
+                <a class="navbar-item" href="/">Home</a>
+                <a class="navbar-item" href="/upload">Upload</a>
+                <a class="navbar-item" href="/settings">Settings</a>
+            </div>
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <button class="button is-small is-dark" id="theme-toggle" title="Toggle dark/light mode">
+                        <span id="theme-icon">🌙</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <section class="section">
+        <div class="container" id="main-content">
+            {#insert content}{/}
+        </div>
+    </section>
+
+    <script>
+        (function() {
+            var toggle = document.getElementById('theme-toggle');
+            var icon = document.getElementById('theme-icon');
+            if (toggle && icon) {
+                var cur = document.documentElement.getAttribute('data-theme');
+                icon.textContent = cur === 'dark' ? '☀️' : '🌙';
+                toggle.addEventListener('click', function() {
+                    var theme = document.documentElement.getAttribute('data-theme');
+                    var next = theme === 'dark' ? 'light' : 'dark';
+                    document.documentElement.setAttribute('data-theme', next);
+                    localStorage.setItem('ovc-theme', next);
+                    icon.textContent = next === 'dark' ? '☀️' : '🌙';
+                });
+            }
+        })();
+    </script>
+
+    <footer class="footer">
+        <div class="content has-text-centered">
+            <p><strong>Open Video Clipper</strong> — AI-Powered Auto Clipping</p>
+        </div>
+    </footer>
+</body>
+</html>

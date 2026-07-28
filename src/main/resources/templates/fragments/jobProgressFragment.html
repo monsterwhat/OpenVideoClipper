@@ -1,0 +1,186 @@
+<div id="job-progress" class="progress-steps" style="margin: 24px 0;" data-job-status="{job.status.name}"
+     data-processing-phase="{processingPhase}"
+     data-processing-phase-label="{processingPhaseLabel}">
+    {#for step in progressSteps}
+    <div class="progress-step {step.state}">
+        <div class="step-indicator">
+            {#if step.state == 'completed'}
+            <span class="step-icon">&#10003;</span>
+            {#else if step.state == 'active'}
+            <span class="step-icon"></span>
+            {#else if step.state == 'failed'}
+            <span class="step-icon">&#10007;</span>
+            {#else}
+            <span class="step-icon"></span>
+            {/if}
+        </div>
+        <div class="step-label">{step.label}</div>
+        {#if !step.isLast}
+        <div class="step-connector {step.state}"></div>
+        {/if}
+    </div>
+    {/for}
+</div>
+
+<div id="status-content-area">
+{#if job.status.name == 'UPLOADED'}
+<div class="has-text-centered" style="margin-top: 20px;">
+    {#if processingPhase == 'extracting_audio'}
+    <div class="phase-card">
+        <div class="phase-header">
+            <div class="phase-icon active">&#9881;</div>
+            <div>
+                <div class="phase-label active">{processingPhaseLabel}</div>
+                <div class="phase-sub">Extracting audio track from video file</div>
+            </div>
+        </div>
+        <progress id="progress-bar-value" class="progress is-small is-warning" value="{transcriptionProgress}" max="100">{transcriptionProgress}%</progress>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+            <div>
+                <span id="phase-active-label" class="has-text-grey" style="font-size: 13px;">{processingPhaseLabel}</span>
+                <span id="phase-detail-message" class="has-text-grey is-size-7" style="display: block; margin-top: 2px;"></span>
+            </div>
+            <span id="phase-percent" class="has-text-grey" style="font-size: 13px; font-variant-numeric: tabular-nums;">{transcriptionProgress}%</span>
+        </div>
+    </div>
+    {#else}
+    <progress id="progress-bar-value" class="progress is-small is-primary" value="{transcriptionProgress}" max="100">{transcriptionProgress}%</progress>
+    {#if processingPhaseLabel}
+    <p id="phase-active-label" class="has-text-grey" style="margin-top: 8px;">{processingPhaseLabel}</p>
+    {#else}
+    <p id="phase-active-label" class="has-text-grey" style="margin-top: 8px;">Uploading and analyzing video...</p>
+    {/if}
+    {/if}
+    <div class="buttons is-centered" style="margin-top: 16px;">
+        <form method="POST" action="/job/{job.id}/retry" style="display:inline">
+            <button class="button is-info is-small" type="submit">Start Processing</button>
+        </form>
+        <form method="POST" action="/job/{job.id}/delete" hx-confirm="Delete this job and all its files?" style="display:inline">
+            <button class="button is-danger is-small" type="submit">Delete</button>
+        </form>
+    </div>
+</div>
+{#else if job.status.name == 'TRANSCRIBING'}
+<div class="has-text-centered" style="margin-top: 20px;">
+    {#if processingPhase == 'transcribing'}
+    <div class="phase-card">
+        <div class="phase-header">
+            <div class="phase-icon active">&#9835;</div>
+            <div>
+                <div class="phase-label active">{processingPhaseLabel}</div>
+                <div class="phase-sub">Processing audio through speech recognition</div>
+            </div>
+        </div>
+        <progress id="progress-bar-value" class="progress is-small is-info" value="{transcriptionProgress}" max="100">{transcriptionProgress}%</progress>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+            <div>
+                <span id="phase-active-label" class="has-text-grey" style="font-size: 13px;">{processingPhaseLabel}</span>
+                <span id="phase-detail-message" class="has-text-grey is-size-7" style="display: block; margin-top: 2px;"></span>
+            </div>
+            <span id="phase-percent" class="has-text-grey" style="font-size: 13px; font-variant-numeric: tabular-nums;">{transcriptionProgress}%</span>
+        </div>
+    </div>
+    {#else}
+    <progress id="progress-bar-value" class="progress is-small is-primary" value="{transcriptionProgress}" max="100">{transcriptionProgress}%</progress>
+    <p id="phase-active-label" class="has-text-grey" style="margin-top: 8px;">
+        {#if transcriptionProgress < 100}
+        Transcribing audio... {transcriptionProgress}%
+        {#else}
+        Finishing transcription...
+        {/if}
+    </p>
+    {/if}
+</div>
+{#else if job.status.name == 'TRANSCRIPTION_REVIEW'}
+<div class="has-text-centered" style="margin-top: 20px;">
+    <p class="subtitle has-text-info">Transcription ready for review!</p>
+    <p class="has-text-grey">Please review the text below to ensure accuracy before AI analysis.</p>
+    <div class="buttons is-centered" style="margin-top: 16px;">
+        <a class="button is-info is-large" href="/job/{job.id}/transcription">View Full Transcript</a>
+    </div>
+</div>
+{#else if job.status.name == 'ANALYZING'}
+<div class="has-text-centered" style="margin-top: 20px;">
+    {#if processingPhase.startsWith('analyzing')}
+    <div class="phase-card">
+        <div class="phase-header">
+            <div class="phase-icon active">&#9889;</div>
+            <div>
+                <div class="phase-label active">{processingPhaseLabel}</div>
+                <div class="phase-sub">
+                    {#if phaseDetailLabel}
+                    <span class="tag is-link is-light" style="font-size: 0.85rem;">{phaseDetailLabel}</span>
+                    {/if}
+                    {#if phaseSubLabel}
+                    <span style="margin-left: 6px;">{phaseSubLabel}</span>
+                    {/if}
+                </div>
+            </div>
+        </div>
+        <progress id="progress-bar-value" class="progress is-small is-link" value="{transcriptionProgress}" max="100">{transcriptionProgress}%</progress>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+            <div>
+                <span id="phase-active-label" class="has-text-grey" style="font-size: 13px;">{processingPhaseLabel}</span>
+                <span id="phase-detail-message" class="has-text-grey is-size-7" style="display: block; margin-top: 2px;">
+                    {#if phaseDetailLabel}{phaseDetailLabel}{/if}
+                </span>
+            </div>
+            <span id="phase-percent" class="has-text-grey" style="font-size: 13px; font-variant-numeric: tabular-nums;">{transcriptionProgress}%</span>
+        </div>
+    </div>
+    {#else}
+    <progress id="progress-bar-value" class="progress is-small is-link" value="0" max="100"></progress>
+    <p id="phase-active-label" class="has-text-grey" style="margin-top: 8px;">Analyzing with AI to find highlights...</p>
+    {/if}
+    <p style="margin-top: 12px;"><a href="/job/{job.id}/transcription">View Transcript</a></p>
+</div>
+{#else if job.status.name == 'SUGGESTIONS_READY'}
+<div class="has-text-centered" style="margin-top: 20px;">
+    {#if suggestionCount > 0}
+    <p class="subtitle">{suggestionCount} clip suggestions generated</p>
+    <div class="buttons is-centered">
+        <a class="button is-primary is-large" href="/job/{job.id}/suggestions">Review &amp; Select Clips</a>
+        <a class="button is-outlined" href="/job/{job.id}/transcription">View Transcript</a>
+    </div>
+    {#else}
+    <p class="subtitle has-text-warning">No clip suggestions found</p>
+    <p class="has-text-grey" style="margin-bottom: 16px;">The LLM returned an empty result. Try re-analyzing with a different prompt.</p>
+    <div class="buttons is-centered">
+        <a class="button is-warning is-large" href="/job/{job.id}/suggestions">Re-analyze</a>
+        <a class="button is-outlined" href="/job/{job.id}/transcription">View Transcript</a>
+    </div>
+    {/if}
+</div>
+{#else if job.status.name == 'CLIPPING'}
+<div class="has-text-centered" style="margin-top: 20px;">
+    <progress id="progress-bar-value" class="progress is-small is-primary" value="0" max="100"></progress>
+    <p id="phase-active-label" class="has-text-grey" style="margin-top: 8px;">Generating clips...</p>
+    <p style="margin-top: 12px;"><a href="/job/{job.id}/transcription">View Transcript</a></p>
+</div>
+{#else if job.status.name == 'COMPLETED'}
+<div class="has-text-centered" style="margin-top: 20px;">
+    <p class="subtitle has-text-success">Clipping complete!</p>
+    <div class="buttons is-centered">
+        <a class="button is-primary is-large" href="/job/{job.id}/results">View Results</a>
+        <a class="button is-outlined" href="/job/{job.id}/transcription">View Transcript</a>
+    </div>
+</div>
+{#else}
+<div class="notification is-danger" style="margin-top: 20px;">
+    <p><strong>{#if job.status.name == 'FAILED'}Processing failed:{#else}Unknown status:{/if}</strong></p>
+    <p>{job.errorMessage}</p>
+    {#if job.transcriptionText}
+    <p style="margin-top: 12px;"><a href="/job/{job.id}/transcription">View Transcript</a></p>
+    {/if}
+    <div class="buttons is-centered" style="margin-top: 16px;">
+        <form method="POST" action="/job/{job.id}/retry" style="display:inline">
+            <button class="button is-info" type="submit">Retry Processing</button>
+        </form>
+        <a class="button is-warning" href="/job/{job.id}/relocate">Locate File</a>
+        <form method="POST" action="/job/{job.id}/delete" hx-confirm="Delete this job and all its files?" style="display:inline">
+            <button class="button is-danger" type="submit">Delete Job</button>
+        </form>
+    </div>
+</div>
+{/if}
+</div>

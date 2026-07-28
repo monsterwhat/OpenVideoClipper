@@ -1,0 +1,30 @@
+<div class="box" style="margin-bottom: 8px; padding: 12px;">
+    <div class="level">
+        <div class="level-left">
+            <div>
+                <strong>{prereq.label}</strong>
+                {#if prereq.met}
+                <span class="tag is-success is-light">✓ {prereq.version}</span>
+                {#else}
+                <span class="tag is-danger is-light">✗ Not found</span>
+                {/if}
+            </div>
+        </div>
+        <div class="level-right">
+            {#if !prereq.met && prereq.installHint}
+            <span class="is-size-7 has-text-grey">{prereq.installHint}</span>
+            {/if}
+            <button class="button is-small is-outlined"
+                    hx-get="/setup/check/{prereq.id}"
+                    hx-target="closest div.box"
+                    hx-swap="outerHTML">
+                Refresh
+            </button>
+        </div>
+    </div>
+    {#if !prereq.met}
+    <progress class="progress is-small is-danger" value="0" max="100">Not installed</progress>
+    {#else}
+    <progress class="progress is-small is-success" value="100" max="100">Installed</progress>
+    {/if}
+</div>

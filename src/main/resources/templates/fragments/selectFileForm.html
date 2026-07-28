@@ -1,0 +1,16 @@
+<div id="selected-file-info" class="notification is-info" style="display: none;">
+    <p><strong>Selected:</strong> <span id="selected-file-name"></span></p>
+</div>
+
+<div id="browse-container">
+    {#include fragments/browseFilesFragment.html /}
+</div>
+
+<div class="has-text-centered" style="margin-top: 20px;">
+    <form method="POST" action="{actionUrl}" id="{formId}">
+        <input type="hidden" name="filePath" id="selected-file-path" value="">
+        <button class="button is-primary is-large" id="use-file-btn" type="submit" disabled>
+            {buttonText}
+        </button>
+    </form>
+</div>

@@ -1,0 +1,23 @@
+{#include base.html}
+{#pageTitle}Select Local Video{/}
+
+{#content}
+<nav class="breadcrumb" aria-label="breadcrumbs">
+    <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/upload">Upload</a></li>
+        <li class="is-active"><a href="#">Select Local Video</a></li>
+    </ul>
+</nav>
+
+<div class="box">
+    <h1 class="title">Select a Video File</h1>
+    <p class="subtitle has-text-grey">Browse your filesystem to select a video to clip</p>
+
+    {#set actionUrl="/job/create-from-file" /}
+    {#set formId="use-file-form" /}
+    {#set buttonText="Use This Video" /}
+    {#include fragments/selectFileForm.html /}
+</div>
+{/}
+{/include}

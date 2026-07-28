@@ -1,0 +1,68 @@
+{#include base.html}
+{#pageTitle}Results - {job.originalFilename}{/}
+
+{#content}
+<nav class="breadcrumb" aria-label="breadcrumbs">
+    <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/job/{job.id}">{job.originalFilename}</a></li>
+        <li class="is-active"><a href="#">Results</a></li>
+    </ul>
+</nav>
+
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Generated Clips</h1>
+            <p class="subtitle">{clips.size()} clips from "{job.originalFilename}"</p>
+        </div>
+    </div>
+    <div class="level-right">
+        <a class="button is-info" href="/job/{job.id}/suggestions">Back to Suggestions</a>
+    </div>
+</div>
+
+{#if clips.isEmpty() && job.status.name == 'CLIPPING'}
+<div class="has-text-centered" style="margin-top: 40px;">
+    <progress class="progress is-small is-primary" value="75" max="100" style="max-width: 400px; margin: 0 auto;"></progress>
+    <p class="has-text-grey" style="margin-top: 8px;">Generating clips... This page will update automatically.</p>
+    <div hx-get="/job/{job.id}/results" hx-trigger="every 3s" hx-target="#main-content" hx-select="#main-content" hx-swap="outerHTML"></div>
+</div>
+{#else if clips.isEmpty()}
+<div class="notification is-warning has-text-centered">
+    No clips generated yet.
+</div>
+{#else}
+<div class="columns is-multiline">
+    {#for clip in clips}
+    <div class="column is-half">
+        <div class="card">
+            <div class="card-content">
+                <h3 class="title is-5">{clip.suggestion.title}</h3>
+                <p class="has-text-grey">{clip.suggestion.reason}</p>
+                <p class="is-size-7 has-text-grey" style="margin-top: 4px;">
+                    {clip.suggestion.formattedStart} - {clip.suggestion.formattedEnd}
+                    &middot; Duration: {clip.suggestion.formattedDuration}
+                </p>
+            </div>
+            <div class="card-image">
+                <video controls style="width: 100%; max-height: 300px; background: #000;">
+                    <source src="/api/clips/{clip.id}/preview" type="video/mp4">
+                    Your browser does not support video playback.
+                </video>
+            </div>
+            <footer class="card-footer">
+                <a class="card-footer-item" href="/api/clips/{clip.id}/video" download="{clip.filename}">
+                    Download
+                </a>
+                <a class="card-footer-item" href="/api/clips/{clip.id}/preview" target="_blank">
+                    Open in New Tab
+                </a>
+            </footer>
+        </div>
+    </div>
+    {/for}
+</div>
+{/if}
+{/}
+{/include}

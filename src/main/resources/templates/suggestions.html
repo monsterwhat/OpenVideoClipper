@@ -1,0 +1,504 @@
+{#include base.html}
+{#pageTitle}Select Clips - {job.originalFilename}{/}
+
+{#content}
+<nav class="breadcrumb" aria-label="breadcrumbs">
+    <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/job/{job.id}">{job.originalFilename}</a></li>
+        <li class="is-active"><a href="#">Select Clips</a></li>
+    </ul>
+</nav>
+
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Clip Suggestions</h1>
+            <p class="subtitle" id="selected-count">Selected: {selectedCount}</p>
+        </div>
+    </div>
+    <div class="level-right">
+        <form method="POST" action="/job/{job.id}/suggestions/select-all" style="display: inline;">
+            <button class="button is-info">Select All</button>
+        </form>
+        <form method="POST" action="/job/{job.id}/clip" style="display: inline;">
+            <button class="button is-primary" id="generate-btn"
+                    {#if selectedCount == 0}disabled{/if}>
+                Generate Clips ({selectedCount})
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Video + Transcript side-by-side -->
+<div class="columns is-gapless is-multiline" style="height: 60vh; min-height: 400px; margin-bottom: 1.5rem;">
+    <div class="column is-half-desktop is-full-mobile" style="height: 100%; min-height: 400px; display: flex; flex-direction: column;">
+        <div class="has-text-centered" style="background: #1a1a1a; border-radius: 4px 4px 0 0; padding: 0.5rem; border-bottom: 1px solid #dbdbdb;">
+            <span class="has-text-grey is-size-7">Video Playback</span>
+        </div>
+        <div style="flex: 1; background: #000; border-radius: 0 0 4px 4px; overflow: hidden; position: relative;">
+            <video id="review-video" controls playsinline style="width: 100%; height: 100%; object-fit: contain;"
+                   src="/job/{job.id}/video">
+                Your browser does not support the video tag.
+            </video>
+            <div id="video-loading" class="has-text-centered" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; display: none;">
+                <progress class="progress is-primary" max="100" value="0" style="width: 200px;"></progress>
+                <p class="is-size-7 mt-2">Loading video...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="column is-half-desktop is-full-mobile" style="height: 100%; min-height: 400px; display: flex; flex-direction: column; border-left: 1px solid #dbdbdb;">
+        <div class="has-text-centered" style="background: #f5f5f5; border-radius: 4px 4px 0 0; padding: 0.5rem; border-bottom: 1px solid #dbdbdb;">
+            <span class="has-text-grey is-size-7">Transcript</span>
+        </div>
+        <div id="transcript-content" class="content transcript-content" style="flex: 1; overflow-y: auto; font-size: 0.95rem; line-height: 1.9; padding: 1rem;">
+            <style>
+                .transcript-highlight {
+                    display: inline;
+                    padding: 2px 4px;
+                    margin: 0 1px;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    background: #fff3cd;
+                    border-bottom: 2px solid #ffc107;
+                    transition: background 0.15s;
+                }
+                .transcript-highlight:hover {
+                    background: #ffe082;
+                }
+                .transcript-highlight.selected {
+                    background: #c8e6c9;
+                    border-bottom-color: #4caf50;
+                }
+                .transcript-highlight.selected:hover {
+                    background: #a5d6a7;
+                }
+                .transcript-word {
+                    display: inline;
+                    cursor: pointer;
+                    padding: 1px 2px;
+                    border-radius: 2px;
+                    transition: background 0.1s;
+                }
+                .transcript-word:hover {
+                    background: #e3f2fd;
+                }
+                .suggestion-tag {
+                    display: inline-block;
+                    margin-left: 4px;
+                    font-size: 0.7rem;
+                    vertical-align: middle;
+                    cursor: pointer;
+                }
+                .time-badge {
+                    opacity: 0.8;
+                }
+                .transcript-highlight.active-highlight {
+                    background: #ffcdd2;
+                    border-bottom-color: #e53935;
+                }
+                .clip-handle {
+                    display: inline;
+                    cursor: ew-resize;
+                    user-select: none;
+                    font-size: 0.65rem;
+                    color: #888;
+                    padding: 0 1px;
+                    vertical-align: middle;
+                }
+                .clip-handle:hover {
+                    color: #e53e00;
+                }
+                .is-dragging-clip {
+                    cursor: ew-resize !important;
+                    user-select: none !important;
+                }
+                .is-dragging-clip .transcript-word,
+                .is-dragging-clip .transcript-highlight {
+                    cursor: ew-resize !important;
+                }
+            </style>
+            {#if spans.isEmpty()}
+                {#if job.status.name == 'ANALYZING'}
+                <div class="has-text-centered" style="margin-top: 40px;">
+                    <progress class="progress is-small is-link" value="0" max="100" style="max-width: 400px; margin: 0 auto;"></progress>
+                    <p class="has-text-grey" style="margin-top: 8px;">AI analysis in progress...</p>
+                    <p class="is-size-7 has-text-grey" style="margin-top: 4px;">This page will update automatically.</p>
+                </div>
+                {#else}
+                <div class="notification is-warning has-text-centered">
+                    No transcription data available.
+                </div>
+                {/if}
+            {#else}
+                {#for span in spans}
+                    {#if span.highlighted}
+                    <span class="transcript-highlight {#if span.isSelected}selected{/if}"
+                          data-start="{span.startSeconds}"
+                          data-end="{span.endSeconds}"
+                          data-suggestion-id="{span.suggestionId}">
+                        <span class="clip-handle clip-handle-start" title="Drag to adjust start">║</span>
+                        {span.text}
+                        <span class="suggestion-tag tag is-small {#if span.isSelected}is-success{#else}is-warning{/if}">
+                            {span.suggestionTitle}
+                            <span class="time-badge">{span.formattedStart} - {span.formattedEnd}</span>
+                        </span>
+                        <span class="clip-handle clip-handle-end" title="Drag to adjust end">║</span>
+                    </span>
+                    {#else}
+                    <span class="transcript-word" data-start="{span.startSeconds}" data-end="{span.endSeconds}">{span.text} </span>
+                    {/if}
+                {/for}
+            {/if}
+        </div>
+    </div>
+</div>
+
+<!-- Suggestion cards grid -->
+{#if suggestions.isEmpty()}
+    {#if job.status.name != 'ANALYZING'}
+    <div class="notification is-warning has-text-centered">
+        No suggestions found. The LLM may have returned an unexpected format.
+        Try re-analyzing with a different context below.
+    </div>
+    {/if}
+{#else}
+<div class="columns is-multiline" id="suggestions-grid">
+    {#for s in suggestions}
+    <div class="column is-one-third" id="suggestion-{s.id}">
+        {#include fragments/suggestionCard.html /}
+    </div>
+    {/for}
+</div>
+{/if}
+
+{#if job.status.name == 'SUGGESTIONS_READY' || job.status.name == 'COMPLETED' || (suggestions.isEmpty() && job.status.name != 'ANALYZING')}
+<div class="box mt-5" id="reanalyze-section">
+    <details>
+        <summary class="has-text-weight-semibold" style="cursor: pointer;">
+            <span class="icon-text">
+                <span class="icon"><i class="fas fa-sync-alt"></i></span>
+                <span>Re-analyze with different context</span>
+            </span>
+        </summary>
+        <div class="mt-3">
+            <p class="is-size-7 has-text-grey mb-2">
+                Provide a different analysis prompt and re-run the LLM. Locked suggestions will be preserved; all others will be replaced.
+            </p>
+            <div class="field">
+                <label class="label is-small">Analysis Prompt</label>
+                <div class="control">
+                    <textarea class="textarea is-family-monospace is-size-7" id="reanalyze-prompt"
+                              rows="3" placeholder="e.g. Extract all moments where the speaker discusses technical architecture..."
+                    >{job.analysisPrompt ?: ''}</textarea>
+                </div>
+            </div>
+            <div class="field is-grouped">
+                <div class="control">
+                    <button class="button is-warning is-small" id="reanalyze-btn"
+                            hx-post="/job/{job.id}/re-analyze"
+                            hx-vals='javascript:{"prompt": document.getElementById("reanalyze-prompt").value}'
+                            hx-trigger="click"
+                            hx-swap="none"
+                            hx-disabled-elt="#reanalyze-btn">
+                        <span class="icon is-small"><i class="fas fa-sync-alt"></i></span>
+                        <span>Re-analyze</span>
+                    </button>
+                </div>
+                <div class="control">
+                    <span class="is-size-7 has-text-grey" id="reanalyze-status"></span>
+                </div>
+            </div>
+        </div>
+    </details>
+</div>
+
+<script>
+document.body.addEventListener('htmx:beforeRequest', function(ev) {
+    if (ev.detail.elt.id === 'reanalyze-btn') {
+        document.getElementById('reanalyze-status').textContent = 'Re-analyzing...';
+        document.getElementById('reanalyze-btn').classList.add('is-loading');
+    }
+});
+document.body.addEventListener('htmx:afterRequest', function(ev) {
+    if (ev.detail.elt.id === 'reanalyze-btn') {
+        var statusEl = document.getElementById('reanalyze-status');
+        if (ev.detail.successful) {
+            statusEl.textContent = 'Re-analysis started. Page will update when complete.';
+            statusEl.classList.remove('has-text-grey');
+            statusEl.classList.add('has-text-success');
+            // Start polling until status changes
+            var pollTimer = setTimeout(function poll() {
+                fetch('/job/{job.id}/progress')
+                    .then(function(r) { return r.text(); })
+                    .then(function(html) {
+                        var parser = new DOMParser();
+                        var doc = parser.parseFromString(html, 'text/html');
+                        var statusEl2 = doc.querySelector('[data-job-status]');
+                        if (statusEl2) {
+                            var status = statusEl2.dataset.jobStatus;
+                            if (status === 'SUGGESTIONS_READY' || status === 'FAILED') {
+                                window.location.reload();
+                                return;
+                            }
+                        }
+                        pollTimer = setTimeout(poll, 3000);
+                    })
+                    .catch(function() {
+                        pollTimer = setTimeout(poll, 3000);
+                    });
+            }, 3000);
+        } else {
+            statusEl.textContent = 'Re-analysis failed. Check server logs.';
+            statusEl.classList.remove('has-text-grey');
+            statusEl.classList.add('has-text-danger');
+            document.getElementById('reanalyze-btn').classList.remove('is-loading');
+        }
+    }
+});
+</script>
+{/if}
+
+<script>
+(function() {
+    var jobId = '{job.id}';
+    if (!jobId) return;
+
+    var videoEl = document.getElementById('review-video');
+    if (!videoEl) return;
+
+    // ─── Volume persistence ────────────────────────────────
+    var VOLUME_KEY = 'ovc-review-volume';
+    var savedVol = localStorage.getItem(VOLUME_KEY);
+    if (savedVol !== null) {
+        var v = parseFloat(savedVol);
+        if (!isNaN(v) && v >= 0 && v <= 1) videoEl.volume = v;
+    }
+    videoEl.addEventListener('volumechange', function() {
+        localStorage.setItem(VOLUME_KEY, videoEl.volume);
+    });
+
+    // ─── Click transcript word → seek video ────────────────
+    document.getElementById('transcript-content').addEventListener('click', function(ev) {
+        // Ignore clicks on clip handles (they use mousedown/mousemove)
+        if (ev.target.closest('.clip-handle')) return;
+        var span = ev.target.closest('.transcript-word, .transcript-highlight');
+        if (!span) return;
+        var start = parseFloat(span.dataset.start);
+        if (isNaN(start)) return;
+        videoEl.currentTime = start;
+        videoEl.play();
+    });
+
+    // ─── Drag clip handles to adjust start/end time ─────────
+    var dragState = null;
+    document.getElementById('transcript-content').addEventListener('mousedown', function(ev) {
+        var handle = ev.target.closest('.clip-handle');
+        if (!handle) return;
+        ev.preventDefault();
+        var highlight = handle.closest('.transcript-highlight');
+        if (!highlight) return;
+        dragState = {
+            type: handle.classList.contains('clip-handle-start') ? 'start' : 'end',
+            suggestionId: highlight.dataset.suggestionId,
+            highlight: highlight
+        };
+        document.body.classList.add('is-dragging-clip');
+    });
+
+    document.addEventListener('mousemove', function(ev) {
+        if (!dragState) return;
+        var handle = dragState.highlight.querySelector('.clip-handle-' + dragState.type);
+        if (!handle) return;
+        // Hide handle so elementFromPoint finds the element beneath
+        var prevDisplay = handle.style.display;
+        handle.style.display = 'none';
+        var el = document.elementFromPoint(ev.clientX, ev.clientY);
+        handle.style.display = prevDisplay;
+        if (!el) return;
+
+        var word, isHighlight = false;
+        if (el.closest('.transcript-highlight')) {
+            word = el.closest('.transcript-highlight');
+            isHighlight = true;
+        } else {
+            word = el.closest('.transcript-word');
+        }
+        if (!word) {
+            // Fallback: find nearest transcript-word by Y position
+            var nearest = null, bestDist = Infinity;
+            document.querySelectorAll('#transcript-content .transcript-word').forEach(function(w) {
+                var r = w.getBoundingClientRect();
+                var d = Math.abs(ev.clientY - (r.top + r.height / 2));
+                if (d < bestDist) { bestDist = d; nearest = w; }
+            });
+            word = nearest;
+        }
+        if (!word) return;
+
+        var newTime;
+        if (isHighlight) {
+            // Interpolate time by X position within the highlight span
+            var rect = word.getBoundingClientRect();
+            var frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+            var hs = parseFloat(word.dataset.start);
+            var he = parseFloat(word.dataset.end);
+            if (isNaN(hs) || isNaN(he)) return;
+            newTime = hs + frac * (he - hs);
+        } else {
+            newTime = dragState.type === 'start'
+                ? parseFloat(word.dataset.start)
+                : parseFloat(word.dataset.end);
+        }
+        if (isNaN(newTime)) return;
+
+        var currentStart = parseFloat(dragState.highlight.dataset.start);
+        var currentEnd = parseFloat(dragState.highlight.dataset.end);
+        if (dragState.type === 'start') {
+            if (newTime >= currentEnd) return;
+            dragState.highlight.dataset.start = newTime;
+        } else {
+            if (newTime <= currentStart) return;
+            dragState.highlight.dataset.end = newTime;
+        }
+
+        // Update the time badge text
+        var tag = dragState.highlight.querySelector('.suggestion-tag .time-badge');
+        if (tag) {
+            tag.textContent = formatTimeShort(parseFloat(dragState.highlight.dataset.start))
+                + ' - ' + formatTimeShort(parseFloat(dragState.highlight.dataset.end));
+        }
+    });
+
+    document.addEventListener('mouseup', function(ev) {
+        if (!dragState) return;
+        var newStart = parseFloat(dragState.highlight.dataset.start);
+        var newEnd = parseFloat(dragState.highlight.dataset.end);
+        if (!isNaN(newStart) && !isNaN(newEnd) && newStart < newEnd) {
+            fetch('/job/' + jobId + '/suggestions/' + dragState.suggestionId + '/time', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ start: newStart, end: newEnd })
+            });
+        }
+        document.body.classList.remove('is-dragging-clip');
+        dragState = null;
+    });
+
+    function formatTimeShort(seconds) {
+        var total = Math.round(seconds);
+        var m = Math.floor(total / 60);
+        var s = total % 60;
+        return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    // ─── Video timeupdate — auto-highlight current transcript span ──
+    videoEl.addEventListener('timeupdate', function() {
+        var t = videoEl.currentTime;
+        // Remove previous active highlights
+        document.querySelectorAll('.transcript-word.active-word, .transcript-highlight.active-highlight').forEach(function(el) {
+            el.classList.remove('active-word', 'active-highlight');
+        });
+        // Find the word/highlight that contains current time
+        var words = document.querySelectorAll('.transcript-word, .transcript-highlight');
+        var activeFound = false;
+        words.forEach(function(el) {
+            var start = parseFloat(el.dataset.start);
+            var end = parseFloat(el.dataset.end);
+            if (t >= start && t < end) {
+                if (el.classList.contains('transcript-highlight')) {
+                    el.classList.add('active-highlight');
+                } else {
+                    el.classList.add('active-word');
+                }
+                activeFound = true;
+            }
+        });
+        // Auto-scroll transcript to keep active span visible
+        if (activeFound) {
+            var active = document.querySelector('.transcript-word.active-word, .transcript-highlight.active-highlight');
+            if (active) {
+                active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    });
+
+    // ─── Global HTMX after-request handler — sync OVCState ──────
+    document.body.addEventListener('htmx:afterRequest', function(ev) {
+        if (!window.OVCState) return;
+        // Sync suggestion card toggles: check if any suggestion-card was swapped
+        var swapped = ev.detail.target;
+        if (swapped && swapped.classList.contains('suggestion-card')) {
+            var sid = swapped.dataset.suggestionId;
+            if (sid) {
+                OVCState.toggleSuggestion(sid, swapped.classList.contains('selected'));
+                // Also sync the corresponding transcript highlight
+                var highlight = document.querySelector('.transcript-highlight[data-suggestion-id="' + sid + '"]');
+                if (highlight) {
+                    highlight.classList.toggle('selected', swapped.classList.contains('selected'));
+                    var tag = highlight.querySelector('.suggestion-tag');
+                    if (tag) {
+                        tag.className = tag.className.replace(/is-success|is-warning/g, '');
+                        tag.classList.add(swapped.classList.contains('selected') ? 'is-success' : 'is-warning');
+                    }
+                }
+            }
+        }
+        // Update selected count display
+        var selectedEl = document.getElementById('selected-count');
+        var generateBtn = document.getElementById('generate-btn');
+        if (selectedEl || generateBtn) {
+            // Fetch updated count from server
+            fetch('/job/' + jobId + '/suggestions/count')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (selectedEl) selectedEl.textContent = 'Selected: ' + data.count;
+                    if (generateBtn) {
+                        if (data.count > 0) {
+                            generateBtn.removeAttribute('disabled');
+                            generateBtn.textContent = 'Generate Clips (' + data.count + ')';
+                        } else {
+                            generateBtn.setAttribute('disabled', 'disabled');
+                            generateBtn.textContent = 'Generate Clips (0)';
+                        }
+                    }
+                })
+                .catch(function() {});
+        }
+    });
+
+    // ─── Initial OVCState sync ──────────────────────────────
+    if (window.OVCState) {
+        document.querySelectorAll('.suggestion-card.selected').forEach(function(card) {
+            var sid = card.dataset.suggestionId;
+            if (sid) OVCState.toggleSuggestion(sid, true);
+        });
+    }
+
+    // ─── SSE-driven status monitoring for ANALYZING ────────
+    {#if job.status.name == 'ANALYZING'}
+    (function() {
+        var evtSource = new EventSource('/job/' + jobId + '/events');
+        evtSource.addEventListener('state', function(e) {
+            try {
+                var data = JSON.parse(e.data);
+                if (data.status === 'SUGGESTIONS_READY' || data.status === 'FAILED') {
+                    evtSource.close();
+                    window.location.reload();
+                }
+            } catch (err) {}
+        });
+        evtSource.addEventListener('done', function() {
+            evtSource.close();
+            window.location.reload();
+        });
+        evtSource.addEventListener('error', function() {
+            evtSource.close();
+        });
+    })();
+    {/if}
+})();
+</script>
+{/}
+{/include}
