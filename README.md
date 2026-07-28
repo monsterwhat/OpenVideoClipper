@@ -125,11 +125,80 @@ UPLOADED → TRANSCRIBING → TRANSCRIPTION_REVIEW → ANALYZING → SUGGESTIONS
 
 ### Prerequisites
 
-- Java 25+
-- Maven 3.9+
-- Python 3.10+ with `torch`, `transformers`, `soundfile`
-- FFmpeg on PATH
-- Ollama running locally (default: `http://localhost:11434`)
+| Requirement | Version | Install (Chocolatey) | Link |
+|---|---|---|---|
+| [Java (JDK)](#java) | 25+ (LTS) | `choco install microsoft-openjdk25` | [adoptium.net](https://adoptium.net/temurin/releases/?version=25) |
+| [Apache Maven](#apache-maven) | 3.9+ | `choco install maven` | [maven.apache.org](https://maven.apache.org/install.html) |
+| [Python](#python) | 3.10+ | `choco install python` | [python.org](https://www.python.org/downloads/) |
+| [FFmpeg](#ffmpeg) | 6+ | `choco install ffmpeg` | [ffmpeg.org](https://ffmpeg.org/download.html) |
+| [Ollama](#ollama) | latest | `choco install ollama` | [ollama.com](https://ollama.com/download) |
+
+#### Java
+
+The project targets **Java 25 LTS**. Any OpenJDK 25 distribution works.
+
+```powershell
+# Chocolatey (Microsoft OpenJDK 25)
+choco install microsoft-openjdk25 -y
+
+# Or Eclipse Temurin
+choco install temurin25jdk -y
+
+# Verify
+java -version
+```
+
+#### Apache Maven
+
+```powershell
+choco install maven -y
+
+# Verify
+mvn -v
+```
+
+#### Python
+
+Used for transcription backends (Parakeet, Faster-Whisper) and scene detection.
+
+```powershell
+choco install python -y
+
+# After install, install transcription dependencies
+cd scripts
+pip install -r requirements.txt
+```
+
+The `requirements.txt` covers `torch`, `transformers`, `soundfile`, `faster-whisper`, and `scenedetect`.
+
+#### FFmpeg
+
+Required for audio extraction and video clipping. Must be on PATH.
+
+```powershell
+choco install ffmpeg -y
+
+# Verify
+ffmpeg -version
+```
+
+#### Ollama
+
+Local LLM server for highlight extraction. Runs on `http://localhost:11434` by default.
+
+```powershell
+# Chocolatey
+choco install ollama -y
+
+# Or PowerShell installer
+irm https://ollama.com/install.ps1 | iex
+```
+
+After installation, pull a model:
+
+```powershell
+ollama pull qwen2.5
+```
 
 ### Development
 
