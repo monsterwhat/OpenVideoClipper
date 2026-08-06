@@ -14,9 +14,15 @@ import json
 import sys
 import argparse
 import warnings
+import os
+import collections
+import tempfile
+import concurrent.futures
 import torch
 
 warnings.filterwarnings("ignore")
+
+DEFAULT_WORKERS = min(4, os.cpu_count() or 1)
 
 
 def get_device_and_compute():
@@ -66,8 +72,8 @@ def generate_word_timestamps(chunks):
     total_words = len(words)
 
     for chunk in chunks:
-        chunk_start = chunk['start_time']
-        chunk_end = chunk['end_time']
+        chunk_start = chunk.get('start_time', chunk.get('start', 0))
+        chunk_end = chunk.get('end_time', chunk.get('end', 0))
         chunk_duration = chunk_end - chunk_start
         chunk_text = chunk.get('text', '').strip()
         chunk_words = chunk_text.split()
@@ -94,7 +100,38 @@ def generate_word_timestamps(chunks):
     return word_timestamps
 
 
-def run_streaming_transcription(audio_file, model_size="large-v3", start_chunk=0, chunk_length_s=15, stride_length_s=5, progress_callback=None):
+def extract_word_timestamps(segments, time_offset=0.0, after_time=0.0):
+    """Extract the model's real word-level timestamps from faster-whisper segments.
+
+    faster-whisper reports per-word start/end times (seconds) when
+    word_timestamps=True. In streaming mode each chunk is transcribed as its own
+    file starting at 0s, so time_offset (the chunk's position in the full audio)
+    is added to every word. Words that begin before after_time are treated as
+    duplicates from an overlapping chunk and skipped.
+
+    Returns a list of {"word", "start", "end"} dicts.
+    """
+    timestamps = []
+    last_end = after_time
+    for segment in segments:
+        for word in (segment.words or []):
+            start = time_offset + word.start
+            end = time_offset + word.end
+            if start < last_end - 0.05:
+                continue
+            text = word.word.strip()
+            if not text:
+                continue
+            timestamps.append({
+                "word": text,
+                "start": round(start, 3),
+                "end": round(end, 3)
+            })
+            last_end = max(last_end, end)
+    return timestamps
+
+
+def run_streaming_transcription(audio_file, model_size="large-v3", start_chunk=0, chunk_length_s=15, stride_length_s=5, progress_callback=None, workers=DEFAULT_WORKERS):
     """Run transcription in streaming mode, yielding chunk results."""
     import soundfile as sf
     from faster_whisper import WhisperModel
@@ -110,55 +147,76 @@ def run_streaming_transcription(audio_file, model_size="large-v3", start_chunk=0
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
 
     all_chunks = []
+    all_word_timestamps = []
+    last_word_end = 0.0
+    pending = collections.deque()
 
-    for i in range(start_chunk, total_chunks):
-        chunk_info = chunks[i]
-
-        if progress_callback:
-            pct = int((i / total_chunks) * 100)
-            progress_callback(pct, i, total_chunks)
-
+    def transcribe_chunk(chunk_info):
         # Write chunk to temp file
-        import tempfile
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
             sf.write(tmp.name, chunk_info['data'], sample_rate)
             tmp_path = tmp.name
 
         try:
-            segments, info = model.transcribe(tmp_path, word_timestamps=True)
-            
-            segment_texts = []
-            for segment in segments:
-                segment_texts.append(segment.text)
-            
-            text = " ".join(segment_texts).strip()
+            segments, info = model.transcribe(tmp_path, word_timestamps=True, vad_filter=True)
 
-            chunk_result = {
-                "index": i,
-                "text": text,
-                "start": round(chunk_info['start_time'], 3),
-                "end": round(chunk_info['end_time'], 3)
-            }
-            all_chunks.append(chunk_result)
+            # Materialize: the segments object is a generator and can only be iterated once
+            segment_list = list(segments)
 
-            yield {
-                "type": "chunk",
-                "index": i,
-                "text": text,
-                "start": round(chunk_info['start_time'], 3),
-                "end": round(chunk_info['end_time'], 3)
-            }
-
+            text = " ".join(s.text for s in segment_list).strip()
+            return text, segment_list
         finally:
-            import os
             try:
                 os.unlink(tmp_path)
             except:
                 pass
 
+    completed = 0
+
+    def collect(idx, fut):
+        nonlocal completed, last_word_end
+        text, segment_list = fut.result()
+
+        chunk_words = extract_word_timestamps(
+            segment_list,
+            time_offset=chunks[idx]['start_time'],
+            after_time=last_word_end
+        )
+        all_word_timestamps.extend(chunk_words)
+        if chunk_words:
+            last_word_end = chunk_words[-1]["end"]
+
+        chunk_info = chunks[idx]
+        chunk_result = {
+            "index": idx,
+            "text": text,
+            "start": round(chunk_info['start_time'], 3),
+            "end": round(chunk_info['end_time'], 3)
+        }
+        all_chunks.append(chunk_result)
+        completed += 1
+        if progress_callback:
+            pct = int((completed / total_chunks) * 100)
+            progress_callback(pct, idx, total_chunks)
+        return {
+            "type": "chunk",
+            "index": idx,
+            "text": text,
+            "start": round(chunk_info['start_time'], 3),
+            "end": round(chunk_info['end_time'], 3)
+        }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        for i in range(start_chunk, total_chunks):
+            pending.append((i, executor.submit(transcribe_chunk, chunks[i])))
+            if len(pending) == workers:
+                yield collect(*pending.popleft())
+        while pending:
+            yield collect(*pending.popleft())
+
     # Generate final result
     full_text = " ".join(c['text'] for c in all_chunks if c['text'])
-    word_timestamps = generate_word_timestamps(all_chunks)
+    word_timestamps = all_word_timestamps if all_word_timestamps else generate_word_timestamps(all_chunks)
     duration = all_chunks[-1]['end'] if all_chunks else 0
 
     yield {
@@ -182,18 +240,22 @@ def run_standard_transcription(audio_file, model_size="large-v3", progress_callb
 
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
 
-    segments, info = model.transcribe(audio_file, word_timestamps=True)
-    
+    segments, info = model.transcribe(audio_file, word_timestamps=True, vad_filter=True)
+
+    segment_list = list(segments)
+
     all_chunks = []
-    for segment in segments:
+    for segment in segment_list:
         all_chunks.append({
             "text": segment.text,
             "start": round(segment.start, 3),
             "end": round(segment.end, 3)
         })
-    
+
     full_text = " ".join(c['text'] for c in all_chunks)
-    word_timestamps = generate_word_timestamps(all_chunks)
+    word_timestamps = extract_word_timestamps(segment_list)
+    if not word_timestamps:
+        word_timestamps = generate_word_timestamps(all_chunks)
     duration = all_chunks[-1]['end'] if all_chunks else 0
 
     output = {
@@ -214,6 +276,7 @@ def main():
     parser.add_argument("--start-chunk", type=int, default=0, help="Chunk index to start from (for resume)")
     parser.add_argument("--chunk-length", type=int, default=15, help="Chunk length in seconds")
     parser.add_argument("--stride", type=int, default=5, help="Stride/overlap in seconds")
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Number of parallel chunk workers")
 
     args = parser.parse_args()
 
@@ -232,6 +295,7 @@ def main():
                 start_chunk=args.start_chunk,
                 chunk_length_s=args.chunk_length,
                 stride_length_s=args.stride,
+                workers=args.workers,
                 progress_callback=progress_cb
             ):
                 print(json.dumps(result), flush=True)

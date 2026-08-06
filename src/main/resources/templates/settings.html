@@ -57,7 +57,16 @@
                         <input class="input" type="number" name="transcriptionBatchSize"
                                value="{config.transcriptionBatchSize}" min="1" max="100">
                     </div>
-                    <p class="help">Number of transcription chunks to process in parallel</p>
+                    <p class="help">Number of transcription chunks to buffer before flushing to the database</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Model Cache Path</label>
+                    <div class="control">
+                        <input class="input" type="text" name="transcriptionCachePath"
+                               value="{config.transcriptionCachePath}" placeholder="">
+                    </div>
+                    <p class="help">Directory for downloaded model caches (HF_HOME / TRANSFORMERS_CACHE). Leave empty to use the default cache location.</p>
                 </div>
             </div>
 
@@ -187,6 +196,33 @@
                                value="{config.analysisTimeoutMinutes}" min="1" max="60">
                     </div>
                     <p class="help">Max wait time for LLM response per request. Default: 5</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Num GPU <span class="has-text-grey-light">(Ollama)</span></label>
+                    <div class="control">
+                        <input class="input" type="number" name="ollamaNumGpu"
+                               value="{config.ollamaNumGpu}" min="-1">
+                    </div>
+                    <p class="help">GPU layers to offload to the LLM (-1 = default). Leave at -1 unless you need to force CPU/GPU.</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Context Size <span class="has-text-grey-light">(tokens)</span></label>
+                    <div class="control">
+                        <input class="input" type="number" name="ollamaNumCtx"
+                               value="{config.ollamaNumCtx}" min="0">
+                    </div>
+                    <p class="help">Context window size for the LLM (0 = model default).</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Keep Alive</label>
+                    <div class="control">
+                        <input class="input" type="text" name="ollamaKeepAlive"
+                               value="{config.ollamaKeepAlive}" placeholder="5m">
+                    </div>
+                    <p class="help">How long to keep the model loaded in memory (e.g. 5m, 1h). Leave empty for the server default.</p>
                 </div>
 
                 <div class="field">

@@ -3,6 +3,7 @@ package com.openvideoclipper.service.transcription;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openvideoclipper.config.OvcConfig;
 import com.openvideoclipper.entity.TranscriptionChunk;
 import com.openvideoclipper.processing.JobExecutionManager;
 import jakarta.annotation.PostConstruct;
@@ -26,6 +27,9 @@ public class FasterWhisperTranscriptionProvider implements TranscriptionProvider
 
     @Inject
     JobExecutionManager executionManager;
+
+    @Inject
+    OvcConfig config;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private Path scriptPath;
@@ -87,10 +91,16 @@ public class FasterWhisperTranscriptionProvider implements TranscriptionProvider
             cmd.add("--stride");
             cmd.add("5");
             cmd.add("--model");
-            cmd.add("large-v3");
+            String model = config.getTranscriptionModel();
+            cmd.add(model == null || model.isBlank() ? "large-v3" : model);
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
+            String cachePath = config.getTranscriptionCachePath();
+            if (cachePath != null && !cachePath.isBlank()) {
+                pb.environment().put("HF_HOME", cachePath);
+                pb.environment().put("TRANSFORMERS_CACHE", cachePath);
+            }
             p = pb.start();
             if (jobId != null) {
                 executionManager.trackProcess(jobId, p);

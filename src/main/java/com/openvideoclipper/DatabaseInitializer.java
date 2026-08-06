@@ -37,6 +37,29 @@ public class DatabaseInitializer {
         // Run schema migration for existing databases where CHECK constraint
         // was generated before TRANSCRIPTION_REVIEW was added to the JobStatus enum
         migrateVideoJobsCheckConstraint();
+        createSceneBoundariesTable();
+    }
+
+    /**
+     * Ensures the scene_boundaries table exists for databases created before the
+     * SceneBoundary entity was introduced. Hibernate's database.generation=update
+     * creates it for new databases; this only adds the table and never alters
+     * existing tables or columns.
+     */
+    private void createSceneBoundariesTable() {
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE TABLE IF NOT EXISTS scene_boundaries (" +
+                "id uuid NOT NULL, " +
+                "job_id uuid NOT NULL, " +
+                "start_time_seconds double precision, " +
+                "end_time_seconds double precision, " +
+                "scene_index integer, " +
+                "PRIMARY KEY (id))");
+            info("[DB Migration] scene_boundaries table ensured");
+        } catch (Exception e) {
+            error("[DB Migration] Failed to ensure scene_boundaries table: " + e.getMessage());
+        }
     }
 
     /**

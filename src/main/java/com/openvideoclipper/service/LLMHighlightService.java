@@ -557,7 +557,19 @@ public class LLMHighlightService implements LLMProvider {
         body.put("model", model);
         body.put("prompt", prompt);
         body.put("stream", false);
-        body.put("options", Map.of("temperature", config.getAnalysisTemperature()));
+        Map<String, Object> options = new HashMap<>();
+        options.put("temperature", config.getAnalysisTemperature());
+        if (config.getOllamaNumGpu() >= 0) {
+            options.put("num_gpu", config.getOllamaNumGpu());
+        }
+        if (config.getOllamaNumCtx() > 0) {
+            options.put("num_ctx", config.getOllamaNumCtx());
+        }
+        body.put("options", options);
+        String keepAlive = config.getOllamaKeepAlive();
+        if (keepAlive != null && !keepAlive.isBlank()) {
+            body.put("keep_alive", keepAlive);
+        }
         if (format != null) {
             body.put("format", format);
         }

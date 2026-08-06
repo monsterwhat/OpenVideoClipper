@@ -27,6 +27,15 @@ public class OvcConfig {
     @ConfigProperty(name = "ovc.ollama.model", defaultValue = "qwen2.5")
     String ollamaModel;
 
+    @ConfigProperty(name = "ovc.ollama.num-gpu", defaultValue = "-1")
+    int ollamaNumGpu;
+
+    @ConfigProperty(name = "ovc.ollama.num-ctx", defaultValue = "0")
+    int ollamaNumCtx;
+
+    @ConfigProperty(name = "ovc.ollama.keep-alive", defaultValue = "")
+    String ollamaKeepAlive;
+
     @ConfigProperty(name = "ovc.transcription.provider", defaultValue = "parakeet")
     String transcriptionProvider;
 
@@ -35,6 +44,9 @@ public class OvcConfig {
 
     @ConfigProperty(name = "ovc.transcription.model", defaultValue = "large-v3")
     String transcriptionModel;
+
+    @ConfigProperty(name = "ovc.transcription.cache-path", defaultValue = "")
+    String transcriptionCachePath;
 
     @ConfigProperty(name = "ovc.analysis.model", defaultValue = "qwen2.5")
     String analysisModel;
@@ -105,8 +117,12 @@ public class OvcConfig {
             }
             this.ollamaUrl = props.getProperty("ollama.url", ollamaUrl);
             this.ollamaModel = props.getProperty("ollama.model", ollamaModel);
+            this.ollamaNumGpu = Integer.parseInt(props.getProperty("ollama.num-gpu", String.valueOf(ollamaNumGpu)));
+            this.ollamaNumCtx = Integer.parseInt(props.getProperty("ollama.num-ctx", String.valueOf(ollamaNumCtx)));
+            this.ollamaKeepAlive = props.getProperty("ollama.keep-alive", ollamaKeepAlive);
             this.transcriptionProvider = props.getProperty("transcription.provider", transcriptionProvider);
             this.transcriptionModel = props.getProperty("transcription.model", transcriptionModel);
+            this.transcriptionCachePath = props.getProperty("transcription.cache-path", transcriptionCachePath);
             this.transcriptionBatchSize = Integer.parseInt(props.getProperty("transcription.batch-size", String.valueOf(transcriptionBatchSize)));
             this.analysisModel = props.getProperty("analysis.model", analysisModel);
             this.refinementModel = props.getProperty("analysis.refinement-model", refinementModel);
@@ -137,8 +153,12 @@ public class OvcConfig {
             props.setProperty("storage.path", storagePath.toString());
             props.setProperty("ollama.url", ollamaUrl);
             props.setProperty("ollama.model", ollamaModel);
+            props.setProperty("ollama.num-gpu", String.valueOf(ollamaNumGpu));
+            props.setProperty("ollama.num-ctx", String.valueOf(ollamaNumCtx));
+            props.setProperty("ollama.keep-alive", ollamaKeepAlive);
             props.setProperty("transcription.provider", transcriptionProvider);
             props.setProperty("transcription.model", transcriptionModel);
+            props.setProperty("transcription.cache-path", transcriptionCachePath);
             props.setProperty("transcription.batch-size", String.valueOf(transcriptionBatchSize));
             props.setProperty("analysis.model", analysisModel);
             if (refinementModel != null && !refinementModel.isBlank()) {
@@ -172,6 +192,15 @@ public class OvcConfig {
     public String getOllamaModel() { return ollamaModel; }
     public void setOllamaModel(String ollamaModel) { this.ollamaModel = ollamaModel; }
 
+    public int getOllamaNumGpu() { return ollamaNumGpu; }
+    public void setOllamaNumGpu(int ollamaNumGpu) { this.ollamaNumGpu = ollamaNumGpu; }
+
+    public int getOllamaNumCtx() { return ollamaNumCtx; }
+    public void setOllamaNumCtx(int ollamaNumCtx) { this.ollamaNumCtx = ollamaNumCtx; }
+
+    public String getOllamaKeepAlive() { return ollamaKeepAlive; }
+    public void setOllamaKeepAlive(String ollamaKeepAlive) { this.ollamaKeepAlive = ollamaKeepAlive; }
+
     public String getTranscriptionProvider() { return transcriptionProvider; }
     public void setTranscriptionProvider(String transcriptionProvider) { this.transcriptionProvider = transcriptionProvider; }
 
@@ -180,6 +209,9 @@ public class OvcConfig {
 
     public String getTranscriptionModel() { return transcriptionModel; }
     public void setTranscriptionModel(String transcriptionModel) { this.transcriptionModel = transcriptionModel; }
+
+    public String getTranscriptionCachePath() { return transcriptionCachePath; }
+    public void setTranscriptionCachePath(String transcriptionCachePath) { this.transcriptionCachePath = transcriptionCachePath; }
 
     public String getAnalysisModel() { return analysisModel; }
     public void setAnalysisModel(String analysisModel) { this.analysisModel = analysisModel; }

@@ -19,10 +19,15 @@ import warnings
 import argparse
 import tempfile
 import os
+import collections
+import concurrent.futures
 
 import torch
 
 warnings.filterwarnings("ignore")
+
+DEFAULT_MODEL = "nvidia/parakeet-tdt-0.6b-v3"
+DEFAULT_WORKERS = min(4, os.cpu_count() or 1)
 
 
 def get_device():
@@ -104,7 +109,7 @@ def generate_word_timestamps(chunks):
     return word_timestamps
 
 
-def run_streaming_transcription(audio_file, start_chunk=0, chunk_length_s=30, stride_length_s=5, progress_callback=None):
+def run_streaming_transcription(audio_file, model=DEFAULT_MODEL, start_chunk=0, chunk_length_s=30, stride_length_s=5, progress_callback=None, workers=DEFAULT_WORKERS):
     """Run transcription in streaming mode, yielding chunk results."""
     import soundfile as sf
     from transformers import pipeline
@@ -117,22 +122,18 @@ def run_streaming_transcription(audio_file, start_chunk=0, chunk_length_s=30, st
     chunks = split_audio_chunks(audio_data, sample_rate, chunk_length_s, stride_length_s)
     total_chunks = len(chunks)
     
+    # One shared pipeline instance across threads; transformers pipelines support concurrent inference.
     pipe = pipeline(
         "automatic-speech-recognition",
-        model="nvidia/parakeet-tdt-0.6b-v3",
+        model=model,
         device=device,
         dtype=dtype,
     )
     
     all_chunks = []
+    pending = collections.deque()
     
-    for i in range(start_chunk, total_chunks):
-        chunk_info = chunks[i]
-        
-        if progress_callback:
-            pct = int((i / total_chunks) * 100)
-            progress_callback(pct, i, total_chunks)
-        
+    def transcribe_chunk(chunk_info):
         # Write chunk to temp file
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
             sf.write(tmp.name, chunk_info['data'], sample_rate)
@@ -142,28 +143,43 @@ def run_streaming_transcription(audio_file, start_chunk=0, chunk_length_s=30, st
             # Run inference WITHOUT timestamps to avoid tokenizer bug
             result = pipe(tmp_path, return_timestamps=False)
             text = result.get("text", "").strip()
-            
-            chunk_result = {
-                "index": i,
+            return {
+                "index": chunk_info['index'],
                 "text": text,
                 "start": round(chunk_info['start_time'], 3),
                 "end": round(chunk_info['end_time'], 3)
             }
-            all_chunks.append(chunk_result)
-            
-            yield {
-                "type": "chunk",
-                "index": i,
-                "text": text,
-                "start": round(chunk_info['start_time'], 3),
-                "end": round(chunk_info['end_time'], 3)
-            }
-            
         finally:
             try:
                 os.unlink(tmp_path)
             except:
                 pass
+    
+    completed = 0
+    
+    def collect(idx, fut):
+        nonlocal completed
+        chunk_result = fut.result()
+        all_chunks.append(chunk_result)
+        completed += 1
+        if progress_callback:
+            pct = int((completed / total_chunks) * 100)
+            progress_callback(pct, idx, total_chunks)
+        return {
+            "type": "chunk",
+            "index": chunk_result["index"],
+            "text": chunk_result["text"],
+            "start": chunk_result["start"],
+            "end": chunk_result["end"]
+        }
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        for i in range(start_chunk, total_chunks):
+            pending.append((i, executor.submit(transcribe_chunk, chunks[i])))
+            if len(pending) == workers:
+                yield collect(*pending.popleft())
+        while pending:
+            yield collect(*pending.popleft())
     
     # Generate final result
     full_text = " ".join(c['text'] for c in all_chunks if c['text'])
@@ -179,7 +195,7 @@ def run_streaming_transcription(audio_file, start_chunk=0, chunk_length_s=30, st
     }
 
 
-def run_standard_transcription(audio_file, progress_callback=None):
+def run_standard_transcription(audio_file, model=DEFAULT_MODEL, progress_callback=None):
     """Run transcription in standard (non-streaming) mode."""
     import soundfile as sf
     from transformers import pipeline
@@ -216,7 +232,7 @@ def run_standard_transcription(audio_file, progress_callback=None):
     try:
         pipe = pipeline(
             "automatic-speech-recognition",
-            model="nvidia/parakeet-tdt-0.6b-v3",
+            model=model,
             device=device,
             dtype=dtype,
         )
@@ -276,10 +292,12 @@ def run_standard_transcription(audio_file, progress_callback=None):
 def main():
     parser = argparse.ArgumentParser(description="Transcribe audio with Parakeet")
     parser.add_argument("audio_file", nargs="?", help="Path to audio file")
+    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="HuggingFace ASR model id")
     parser.add_argument("--stream-chunks", action="store_true", help="Enable streaming mode (one JSON line per chunk)")
     parser.add_argument("--start-chunk", type=int, default=0, help="Chunk index to start from (for resume)")
     parser.add_argument("--chunk-length", type=int, default=15, help="Chunk length in seconds")
     parser.add_argument("--stride", type=int, default=5, help="Stride/overlap in seconds")
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Number of parallel chunk workers")
     
     args = parser.parse_args()
     
@@ -294,9 +312,11 @@ def main():
         try:
             for result in run_streaming_transcription(
                 args.audio_file, 
+                model=args.model,
                 start_chunk=args.start_chunk,
                 chunk_length_s=args.chunk_length,
                 stride_length_s=args.stride,
+                workers=args.workers,
                 progress_callback=progress_cb
             ):
                 print(json.dumps(result), flush=True)
@@ -305,7 +325,7 @@ def main():
             print(json.dumps({"type": "error", "error": str(e), "traceback": traceback.format_exc()}), file=sys.stderr)
             sys.exit(1)
     else:
-        run_standard_transcription(args.audio_file)
+        run_standard_transcription(args.audio_file, model=args.model)
 
 
 if __name__ == "__main__":

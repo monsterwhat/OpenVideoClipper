@@ -1,7 +1,30 @@
 import sys
 import json
 import subprocess
-import math
+import os
+
+def parse_time(value):
+    value = value.strip().strip('"')
+    if not value:
+        return None
+    if ":" in value:
+        try:
+            seconds = 0.0
+            for part in value.split(":"):
+                seconds = seconds * 60 + float(part)
+            return seconds
+        except ValueError:
+            return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+def find_scenes_csv():
+    for candidate in (os.path.join("scenes", "scenes.csv"), "scenes.csv"):
+        if os.path.exists(candidate):
+            return candidate
+    return None
 
 def run_scenedetect(video_path):
     try:
@@ -14,34 +37,48 @@ def run_scenedetect(video_path):
             "--list-scenes",
             "--output", "scenes"
         ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        
-        # PySceneDetect output is usually in a file named scenes.csv in the current directory
-        # But let's check the command output for the list of scenes if possible
-        # Actually, it's better to parse the file it creates.
-        
-        import os
-        csv_file = "scenes.csv"
-        if not os.path.exists(csv_file):
-            # Try to find it if it's in a different location
-            print(f"Error: {csv_file} not found", file=sys.stderr)
+
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+        # PySceneDetect writes scenes.csv into the --output directory.
+        csv_file = find_scenes_csv()
+        if csv_file is None:
+            print("Error: scenes.csv not found", file=sys.stderr)
             return []
 
-        scenes = []
         with open(csv_file, 'r') as f:
-            lines = f.readlines()
-            # Skip header
-            for line in lines[1:]:
-                parts = line.strip().split(',')
-                if len(parts) >= 2:
-                    start = float(parts[0])
-                    end = float(parts[1])
-                    scenes.append({"start": start, "end": end})
-        
+            lines = [line.strip() for line in f if line.strip()]
+
+        start_col = None
+        end_col = None
+        data_lines = lines
+        if lines:
+            header = lines[0].lower()
+            if "start" in header or "time" in header:
+                cols = [c.strip().strip('"').lower() for c in header.split(",")]
+                if "start time (seconds)" in cols:
+                    start_col = cols.index("start time (seconds)")
+                    end_col = cols.index("end time (seconds)")
+                elif "start timecode" in cols:
+                    start_col = cols.index("start timecode")
+                    end_col = cols.index("end timecode")
+                data_lines = lines[1:]
+
+        scenes = []
+        for line in data_lines:
+            parts = [p.strip() for p in line.split(",")]
+            if start_col is not None and end_col is not None and len(parts) > max(start_col, end_col):
+                start = parse_time(parts[start_col])
+                end = parse_time(parts[end_col])
+            else:
+                start = parse_time(parts[1]) if len(parts) > 1 else None
+                end = parse_time(parts[2]) if len(parts) > 2 else None
+            if start is not None and end is not None and end > start:
+                scenes.append({"start": start, "end": end})
+
         return scenes
     except Exception as e:
-        print(f"Error running scenedetect: {str(e)}", file=sys.stderr)
+        print("Error running scenedetect: %s" % e, file=sys.stderr)
         return []
 
 if __name__ == "__main__":

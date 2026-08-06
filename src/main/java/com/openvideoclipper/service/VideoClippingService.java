@@ -1,5 +1,6 @@
 package com.openvideoclipper.service;
 
+import static com.openvideoclipper.utils.LogUtil.error;
 import com.openvideoclipper.config.OvcConfig;
 import com.openvideoclipper.entity.*;
 import com.openvideoclipper.processing.JobExecutionManager;
@@ -143,6 +144,38 @@ public class VideoClippingService {
     public double getVideoDuration(Path videoPath) {
         try {
             List<String> cmd = List.of(
+                findFfprobe(), "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=nw=1:nk=1",
+                videoPath.toAbsolutePath().toString()
+            );
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            Process p = pb.start();
+
+            StringBuilder output = new StringBuilder();
+            try (var reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+
+            boolean done = p.waitFor(30, TimeUnit.SECONDS);
+            if (done && p.exitValue() == 0) {
+                String value = output.toString().trim();
+                if (!value.isEmpty()) {
+                    return Double.parseDouble(value);
+                }
+            }
+        } catch (Exception e) {
+            error("[VideoClippingService] ffprobe duration probe failed, falling back to ffmpeg: " + e.getMessage());
+        }
+        return getVideoDurationFallback(videoPath);
+    }
+
+    private double getVideoDurationFallback(Path videoPath) {
+        try {
+            List<String> cmd = List.of(
                 findFfmpeg(), "-i", videoPath.toAbsolutePath().toString(),
                 "-f", "null", "-"
             );
@@ -179,14 +212,27 @@ public class VideoClippingService {
     private void runFfmpeg(UUID jobId, Path input, Path output, double start, double end) throws IOException, InterruptedException {
         double duration = end - start;
 
-        List<String> cmd = List.of(
-            findFfmpeg(), "-ss", formatTime(start),
-            "-i", input.toAbsolutePath().toString(),
-            "-t", formatTime(duration),
-            "-c", "copy",
-            "-avoid_negative_ts", "make_zero",
-            "-y", output.toAbsolutePath().toString()
-        );
+        String clipCodec = config.getClipCodec();
+        List<String> cmd;
+        if (clipCodec == null || clipCodec.isBlank() || "copy".equalsIgnoreCase(clipCodec)) {
+            cmd = List.of(
+                findFfmpeg(), "-ss", formatTime(start),
+                "-i", input.toAbsolutePath().toString(),
+                "-t", formatTime(duration),
+                "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
+                "-y", output.toAbsolutePath().toString()
+            );
+        } else {
+            cmd = List.of(
+                findFfmpeg(), "-ss", formatTime(start),
+                "-i", input.toAbsolutePath().toString(),
+                "-t", formatTime(duration),
+                "-c:v", clipCodec, "-c:a", "copy",
+                "-avoid_negative_ts", "make_zero",
+                "-y", output.toAbsolutePath().toString()
+            );
+        }
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
@@ -217,5 +263,9 @@ public class VideoClippingService {
 
     private String findFfmpeg() {
         return "ffmpeg";
+    }
+
+    private String findFfprobe() {
+        return "ffprobe";
     }
 }

@@ -24,8 +24,12 @@ public class SettingsService {
     public void saveSettings(
             String ollamaUrl,
             String ollamaModel,
+            int ollamaNumGpu,
+            int ollamaNumCtx,
+            String ollamaKeepAlive,
             String provider,
             String transcriptionModel,
+            String transcriptionCachePath,
             int transcriptionBatchSize,
             String analysisModel,
             String refinementModel,
@@ -44,11 +48,19 @@ public class SettingsService {
         if (ollamaModel != null && !ollamaModel.isBlank()) {
             config.setOllamaModel(ollamaModel.trim());
         }
+        config.setOllamaNumGpu(ollamaNumGpu);
+        config.setOllamaNumCtx(ollamaNumCtx);
+        if (ollamaKeepAlive != null) {
+            config.setOllamaKeepAlive(ollamaKeepAlive.trim());
+        }
         if (provider != null && !provider.isBlank()) {
             config.setTranscriptionProvider(provider.trim());
         }
         if (transcriptionModel != null && !transcriptionModel.isBlank()) {
             config.setTranscriptionModel(transcriptionModel.trim());
+        }
+        if (transcriptionCachePath != null) {
+            config.setTranscriptionCachePath(transcriptionCachePath.trim());
         }
         config.setTranscriptionBatchSize(transcriptionBatchSize);
         if (analysisModel != null && !analysisModel.isBlank()) {

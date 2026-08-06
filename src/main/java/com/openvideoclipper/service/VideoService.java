@@ -7,10 +7,13 @@ import com.openvideoclipper.processing.LLMProvider;
 import com.openvideoclipper.processing.LLMProviderFactory;
 import com.openvideoclipper.processing.TranscriptionProviderFactory;
 import com.openvideoclipper.repository.ClipSuggestionRepository;
+import com.openvideoclipper.repository.SceneBoundaryRepository;
 import com.openvideoclipper.repository.TranscriptionChunkRepository;
 import com.openvideoclipper.repository.VideoJobRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openvideoclipper.service.analysis.AnalysisProvider;
+import com.openvideoclipper.service.analysis.AnalysisService;
 import com.openvideoclipper.service.transcription.TranscriptionProvider;
 import static com.openvideoclipper.utils.LogUtil.info;
 import static com.openvideoclipper.utils.LogUtil.error;
@@ -46,6 +49,9 @@ public class VideoService {
     TranscriptionChunkRepository chunkRepo;
 
     @Inject
+    SceneBoundaryRepository sceneRepo;
+
+    @Inject
     TransactionSynchronizationRegistry txSync;
 
     @Inject
@@ -56,6 +62,9 @@ public class VideoService {
 
     @Inject
     LLMProviderFactory llmFactory;
+
+    @Inject
+    AnalysisService analysisService;
 
     @Inject
     VideoClippingService clippingService;
@@ -170,6 +179,7 @@ public class VideoService {
             transaction.begin();
             VideoJob job = jobRepo.findById(jobId);
             if (job == null) { transaction.rollback(); info("[VideoService] deleteJob: job not found"); return; }
+            sceneRepo.deleteByJobId(jobId);
             jobRepo.delete(job);
             transaction.commit();
             info("[VideoService] deleteJob: DB record deleted");
@@ -384,6 +394,8 @@ public class VideoService {
 
                     executionManager.setPhase(jobId, "analyzing");
                     executionManager.updateProgress(jobId, 0);
+                    // Non-fatal: on any failure suggestions simply proceed unsnapped
+                    runSceneDetection(jobId, refreshed.getFilePath());
                     info("[VideoService] continueProcessingImpl: calling LLM for highlights...");
                     LLMProvider provider = llmFactory.getProvider();
                     provider.setJobContext(jobId);
@@ -426,6 +438,7 @@ public class VideoService {
 
                     transaction.begin();
                     VideoJob j4 = jobRepo.findById(jobId);
+                    List<SceneBoundary> scenes = sceneRepo.findByJobIdOrderBySceneIndex(jobId);
                     for (LLMProvider.Suggestion s : highlights) {
                         ClipSuggestion cs = new ClipSuggestion();
                         cs.setJob(j4);
@@ -435,6 +448,7 @@ public class VideoService {
                         cs.setReason(s.reason());
                         cs.setConfidenceScore(s.confidence());
                         cs.setIsSelected(false);
+                        snapSuggestionToScenes(cs, scenes);
                         suggestionRepo.persist(cs);
                         j4.getSuggestions().add(cs);
                     }
@@ -482,6 +496,94 @@ public class VideoService {
         }
     }
 
+    private void runSceneDetection(UUID jobId, String videoFilePath) {
+        try {
+            if (!loadSceneBoundaries(jobId).isEmpty()) {
+                info("[VideoService] continueProcessingImpl: scene boundaries already exist, skipping scene detection");
+                return;
+            }
+            info("[VideoService] continueProcessingImpl: running scene detection for job " + jobId);
+            List<AnalysisProvider.AnalysisResult> results = analysisService.runAll(
+                Path.of(videoFilePath), null, List.of("scenedetect")
+            );
+            List<SceneBoundary> scenes = new ArrayList<>();
+            for (AnalysisProvider.AnalysisResult result : results) {
+                if (result == null || !"scene_cut".equals(result.type())) {
+                    continue;
+                }
+                int index = 0;
+                for (AnalysisProvider.AnalysisEvent event : result.events()) {
+                    SceneBoundary sb = new SceneBoundary();
+                    sb.setStartTimeSeconds(event.start());
+                    sb.setEndTimeSeconds(event.end());
+                    sb.setSceneIndex(index);
+                    scenes.add(sb);
+                    index++;
+                }
+            }
+            if (scenes.isEmpty()) {
+                info("[VideoService] continueProcessingImpl: scene detection produced no boundaries, suggestions will not be snapped");
+                return;
+            }
+            transaction.begin();
+            VideoJob job = jobRepo.findById(jobId);
+            for (SceneBoundary sb : scenes) {
+                sb.setJob(job);
+                sceneRepo.persist(sb);
+            }
+            transaction.commit();
+            info("[VideoService] continueProcessingImpl: saved " + scenes.size() + " scene boundaries for job " + jobId);
+        } catch (Exception e) {
+            try { transaction.rollback(); } catch (Exception ignored) {}
+            error("[VideoService] continueProcessingImpl: scene detection failed, continuing without snapping - " + e.getMessage(), e);
+        }
+    }
+
+    private List<SceneBoundary> loadSceneBoundaries(UUID jobId) {
+        try {
+            transaction.begin();
+            List<SceneBoundary> scenes = sceneRepo.findByJobIdOrderBySceneIndex(jobId);
+            transaction.commit();
+            return scenes;
+        } catch (Exception e) {
+            try { transaction.rollback(); } catch (Exception ignored) {}
+            info("[VideoService] loadSceneBoundaries: failed to load scene boundaries - " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    private void snapSuggestionToScenes(ClipSuggestion cs, List<SceneBoundary> scenes) {
+        if (scenes == null || scenes.isEmpty()) {
+            return;
+        }
+        Double start = cs.getStartTimeSeconds();
+        Double end = cs.getEndTimeSeconds();
+        if (start == null || end == null) {
+            return;
+        }
+        double snappedStart = start;
+        double snappedEnd = end;
+        boolean startSnapped = false;
+        boolean endSnapped = false;
+        for (SceneBoundary sb : scenes) {
+            double sceneStart = sb.getStartTimeSeconds();
+            double sceneEnd = sb.getEndTimeSeconds();
+            if (sceneStart <= start && (!startSnapped || sceneStart > snappedStart)) {
+                snappedStart = sceneStart;
+                startSnapped = true;
+            }
+            if (sceneEnd >= end && (!endSnapped || sceneEnd < snappedEnd)) {
+                snappedEnd = sceneEnd;
+                endSnapped = true;
+            }
+        }
+        if (startSnapped && endSnapped && snappedStart < snappedEnd) {
+            cs.setStartTimeSeconds(snappedStart);
+            cs.setEndTimeSeconds(snappedEnd);
+            info("[VideoService] snapped suggestion [" + start + ", " + end + "] to scene boundary [" + snappedStart + ", " + snappedEnd + "]");
+        }
+    }
+
     private TranscriptionProvider.TranscriptionResult runStreamingTranscription(UUID jobId, Path audioPath, int startChunk) {
         TranscriptionProvider provider = transcriptionFactory.getProvider();
         if (!(provider instanceof com.openvideoclipper.service.transcription.ParakeetTranscriptionProvider parakeetProvider)) {
@@ -526,6 +628,7 @@ public class VideoService {
             if (job.getSuggestions() != null) job.getSuggestions().clear();
             if (job.getClips() != null) job.getClips().clear();
             if (job.getTranscriptionChunks() != null) job.getTranscriptionChunks().clear();
+            sceneRepo.deleteByJobId(jobId);
             job.setStatus(JobStatus.UPLOADED);
             jobRepo.persist(job);
             transaction.commit();

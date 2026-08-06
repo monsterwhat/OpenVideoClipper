@@ -3,6 +3,7 @@ package com.openvideoclipper.service.transcription;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openvideoclipper.config.OvcConfig;
 import com.openvideoclipper.entity.TranscriptionChunk;
 import com.openvideoclipper.processing.JobExecutionManager;
 import jakarta.annotation.PostConstruct;
@@ -26,6 +27,9 @@ public class ParakeetTranscriptionProvider implements TranscriptionProvider {
 
     @Inject
     JobExecutionManager executionManager;
+
+    @Inject
+    OvcConfig config;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private Path scriptPath;
@@ -87,11 +91,22 @@ public class ParakeetTranscriptionProvider implements TranscriptionProvider {
             cmd.add("--stride");
             cmd.add("5");
 
+            String model = config.getTranscriptionModel();
+            if (model != null && !model.isBlank() && !"large-v3".equals(model)) {
+                cmd.add("--model");
+                cmd.add(model);
+            }
+
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             pb.environment().put("HF_HUB_DISABLE_PROGRESS_BARS", "1");
             pb.environment().put("HF_HUB_DISABLE_SYMLINKS_WARNING", "1");
             pb.environment().put("TRANSFORMERS_VERBOSITY", "error");
+            String cachePath = config.getTranscriptionCachePath();
+            if (cachePath != null && !cachePath.isBlank()) {
+                pb.environment().put("HF_HOME", cachePath);
+                pb.environment().put("TRANSFORMERS_CACHE", cachePath);
+            }
             p = pb.start();
             if (jobId != null) {
                 executionManager.trackProcess(jobId, p);
