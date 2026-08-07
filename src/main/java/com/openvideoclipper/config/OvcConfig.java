@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 
@@ -33,8 +34,11 @@ public class OvcConfig {
     @ConfigProperty(name = "ovc.ollama.num-ctx", defaultValue = "0")
     int ollamaNumCtx;
 
-    @ConfigProperty(name = "ovc.ollama.keep-alive", defaultValue = "")
-    String ollamaKeepAlive;
+    // Optional. defaultValue="" would break startup: SmallRye converts "" to null (SRCFG00040).
+    @ConfigProperty(name = "ovc.ollama.keep-alive")
+    Optional<String> ollamaKeepAliveOpt;
+
+    String ollamaKeepAlive = "";
 
     @ConfigProperty(name = "ovc.transcription.provider", defaultValue = "parakeet")
     String transcriptionProvider;
@@ -45,8 +49,10 @@ public class OvcConfig {
     @ConfigProperty(name = "ovc.transcription.model", defaultValue = "large-v3")
     String transcriptionModel;
 
-    @ConfigProperty(name = "ovc.transcription.cache-path", defaultValue = "")
-    String transcriptionCachePath;
+    @ConfigProperty(name = "ovc.transcription.cache-path")
+    Optional<String> transcriptionCachePathOpt;
+
+    String transcriptionCachePath = "";
 
     @ConfigProperty(name = "ovc.analysis.model", defaultValue = "qwen2.5")
     String analysisModel;
@@ -76,12 +82,35 @@ public class OvcConfig {
     @ConfigProperty(name = "ovc.clip.format", defaultValue = "mp4")
     String clipFormat;
 
+    @ConfigProperty(name = "ovc.vision.enabled", defaultValue = "false")
+    boolean visionEnabled;
+
+    @ConfigProperty(name = "ovc.vision.model", defaultValue = "gemma4:12b")
+    String visionModel;
+
+    @ConfigProperty(name = "ovc.vision.frame-interval", defaultValue = "2")
+    int visionFrameInterval;
+
+    @ConfigProperty(name = "ovc.vision.max-frames", defaultValue = "240")
+    int visionMaxFrames;
+
+    @ConfigProperty(name = "ovc.vision.batch-size", defaultValue = "8")
+    int visionBatchSize;
+
+    @ConfigProperty(name = "ovc.vision.refine-enabled", defaultValue = "true")
+    boolean visionRefineEnabled;
+
+    @ConfigProperty(name = "ovc.vision.refine-threshold", defaultValue = "0.6")
+    double visionRefineThreshold;
+
     private Path storagePath;
     private boolean configured;
     private Path configFilePath;
 
     @PostConstruct
     void init() {
+        this.ollamaKeepAlive = ollamaKeepAliveOpt.orElse("");
+        this.transcriptionCachePath = transcriptionCachePathOpt.orElse("");
         String userHome = System.getProperty("user.home", ".");
         Path configDir = Paths.get(userHome, ".ovc");
         configFilePath = configDir.resolve("config.properties");
@@ -134,6 +163,13 @@ public class OvcConfig {
             this.analysisPrompt = props.getProperty("analysis.prompt", analysisPrompt);
             this.clipCodec = props.getProperty("clip.codec", clipCodec);
             this.clipFormat = props.getProperty("clip.format", clipFormat);
+            this.visionEnabled = Boolean.parseBoolean(props.getProperty("vision.enabled", String.valueOf(visionEnabled)));
+            this.visionModel = props.getProperty("vision.model", visionModel);
+            this.visionFrameInterval = Integer.parseInt(props.getProperty("vision.frame-interval", String.valueOf(visionFrameInterval)));
+            this.visionMaxFrames = Integer.parseInt(props.getProperty("vision.max-frames", String.valueOf(visionMaxFrames)));
+            this.visionBatchSize = Integer.parseInt(props.getProperty("vision.batch-size", String.valueOf(visionBatchSize)));
+            this.visionRefineEnabled = Boolean.parseBoolean(props.getProperty("vision.refine-enabled", String.valueOf(visionRefineEnabled)));
+            this.visionRefineThreshold = Double.parseDouble(props.getProperty("vision.refine-threshold", String.valueOf(visionRefineThreshold)));
             this.configured = Boolean.parseBoolean(props.getProperty("configured", "false"));
 
             try {
@@ -155,10 +191,10 @@ public class OvcConfig {
             props.setProperty("ollama.model", ollamaModel);
             props.setProperty("ollama.num-gpu", String.valueOf(ollamaNumGpu));
             props.setProperty("ollama.num-ctx", String.valueOf(ollamaNumCtx));
-            props.setProperty("ollama.keep-alive", ollamaKeepAlive);
+            props.setProperty("ollama.keep-alive", ollamaKeepAlive == null ? "" : ollamaKeepAlive);
             props.setProperty("transcription.provider", transcriptionProvider);
             props.setProperty("transcription.model", transcriptionModel);
-            props.setProperty("transcription.cache-path", transcriptionCachePath);
+            props.setProperty("transcription.cache-path", transcriptionCachePath == null ? "" : transcriptionCachePath);
             props.setProperty("transcription.batch-size", String.valueOf(transcriptionBatchSize));
             props.setProperty("analysis.model", analysisModel);
             if (refinementModel != null && !refinementModel.isBlank()) {
@@ -174,6 +210,13 @@ public class OvcConfig {
             }
             props.setProperty("clip.codec", clipCodec);
             props.setProperty("clip.format", clipFormat);
+            props.setProperty("vision.enabled", String.valueOf(visionEnabled));
+            props.setProperty("vision.model", visionModel);
+            props.setProperty("vision.frame-interval", String.valueOf(visionFrameInterval));
+            props.setProperty("vision.max-frames", String.valueOf(visionMaxFrames));
+            props.setProperty("vision.batch-size", String.valueOf(visionBatchSize));
+            props.setProperty("vision.refine-enabled", String.valueOf(visionRefineEnabled));
+            props.setProperty("vision.refine-threshold", String.valueOf(visionRefineThreshold));
             props.setProperty("configured", String.valueOf(configured));
             try (var out = Files.newOutputStream(configFilePath)) {
                 props.store(out, "OVC Configuration");
@@ -243,6 +286,27 @@ public class OvcConfig {
     public String getClipFormat() { return clipFormat; }
     public void setClipFormat(String clipFormat) { this.clipFormat = clipFormat; }
 
+    public boolean isVisionEnabled() { return visionEnabled; }
+    public void setVisionEnabled(boolean visionEnabled) { this.visionEnabled = visionEnabled; }
+
+    public String getVisionModel() { return visionModel; }
+    public void setVisionModel(String visionModel) { this.visionModel = visionModel; }
+
+    public int getVisionFrameInterval() { return visionFrameInterval; }
+    public void setVisionFrameInterval(int visionFrameInterval) { this.visionFrameInterval = visionFrameInterval; }
+
+    public int getVisionMaxFrames() { return visionMaxFrames; }
+    public void setVisionMaxFrames(int visionMaxFrames) { this.visionMaxFrames = visionMaxFrames; }
+
+    public int getVisionBatchSize() { return visionBatchSize; }
+    public void setVisionBatchSize(int visionBatchSize) { this.visionBatchSize = visionBatchSize; }
+
+    public boolean isVisionRefineEnabled() { return visionRefineEnabled; }
+    public void setVisionRefineEnabled(boolean visionRefineEnabled) { this.visionRefineEnabled = visionRefineEnabled; }
+
+    public double getVisionRefineThreshold() { return visionRefineThreshold; }
+    public void setVisionRefineThreshold(double visionRefineThreshold) { this.visionRefineThreshold = visionRefineThreshold; }
+
     public boolean isConfigured() { return configured; }
     public void setConfigured(boolean configured) { this.configured = configured; }
 
@@ -260,6 +324,12 @@ public class OvcConfig {
 
     public Path getProjectClipsPath(UUID jobId) {
         Path p = storagePath.resolve(jobId.toString()).resolve("clips");
+        try { Files.createDirectories(p); } catch (IOException ignored) {}
+        return p;
+    }
+
+    public Path getProjectFramesPath(UUID jobId) {
+        Path p = storagePath.resolve(jobId.toString()).resolve("frames");
         try { Files.createDirectories(p); } catch (IOException ignored) {}
         return p;
     }
