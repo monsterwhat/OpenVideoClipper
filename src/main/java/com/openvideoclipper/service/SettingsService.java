@@ -40,7 +40,14 @@ public class SettingsService {
             int analysisMaxSuggestions,
             String analysisPrompt,
             String clipCodec,
-            String clipFormat
+            String clipFormat,
+            boolean visionEnabled,
+            String visionModel,
+            int visionFrameInterval,
+            int visionMaxFrames,
+            int visionBatchSize,
+            boolean visionRefineEnabled,
+            double visionRefineThreshold
     ) {
         if (ollamaUrl != null && !ollamaUrl.isBlank()) {
             config.setOllamaUrl(ollamaUrl.trim());
@@ -83,6 +90,15 @@ public class SettingsService {
         if (clipFormat != null && !clipFormat.isBlank()) {
             config.setClipFormat(clipFormat.trim());
         }
+        config.setVisionEnabled(visionEnabled);
+        if (visionModel != null && !visionModel.isBlank()) {
+            config.setVisionModel(visionModel.trim());
+        }
+        config.setVisionFrameInterval(visionFrameInterval);
+        config.setVisionMaxFrames(visionMaxFrames);
+        config.setVisionBatchSize(visionBatchSize);
+        config.setVisionRefineEnabled(visionRefineEnabled);
+        config.setVisionRefineThreshold(visionRefineThreshold);
         config.save();
     }
 

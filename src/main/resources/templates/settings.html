@@ -235,6 +235,91 @@
                 </div>
             </div>
 
+            <!-- Vision Analysis Settings -->
+            <div class="box">
+                <h2 class="title is-4">
+                    <span class="icon-text">
+                        <span>&#x1f4f7;</span>
+                        <span>Vision Analysis (Gemma 4)</span>
+                    </span>
+                </h2>
+                <p class="has-text-grey mb-4">Configure frame-level vision analysis for visual highlight detection</p>
+
+                <div class="field">
+                    <label class="label">
+                        <span class="checkbox">
+                            <input type="checkbox" name="visionEnabled" value="true" {#if config.visionEnabled}checked{/if}>
+                            Enable vision analysis
+                        </span>
+                    </label>
+                    <p class="help">Extract keyframes from the video and analyze them with a multimodal model. Disabled by default.</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Vision Model</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select name="visionModel" id="visionModelSelect">
+                                <option value="{config.visionModel}" selected>{config.visionModel}</option>
+                                {#for m in ollamaModels}
+                                {#if m != config.visionModel}
+                                <option value="{m}">{m}</option>
+                                {/if}
+                                {/for}
+                                <option value="">-- Test connection to load models --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="help">Ollama multimodal model used for frame analysis (e.g. gemma4:12b). Must support image input.</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Frame Interval <span class="has-text-grey-light">(seconds)</span></label>
+                    <div class="control">
+                        <input class="input" type="number" name="visionFrameInterval"
+                               value="{config.visionFrameInterval}" min="1" step="1">
+                    </div>
+                    <p class="help">How often to extract a frame for analysis (seconds between frames). Default: 2</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Max Frames</label>
+                    <div class="control">
+                        <input class="input" type="number" name="visionMaxFrames"
+                               value="{config.visionMaxFrames}" min="1" max="10000">
+                    </div>
+                    <p class="help">Maximum number of frames to analyze per video. Default: 240</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Batch Size</label>
+                    <div class="control">
+                        <input class="input" type="number" name="visionBatchSize"
+                               value="{config.visionBatchSize}" min="1" max="100">
+                    </div>
+                    <p class="help">Number of frames sent to the model per request. Default: 8</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">
+                        <span class="checkbox">
+                            <input type="checkbox" name="visionRefineEnabled" value="true" {#if config.visionRefineEnabled}checked{/if}>
+                            Enable refinement pass
+                        </span>
+                    </label>
+                    <p class="help">Run a refinement pass over detected frames to reduce noise. Enabled by default.</p>
+                </div>
+
+                <div class="field">
+                    <label class="label">Refinement Threshold</label>
+                    <div class="control">
+                        <input class="input" type="number" name="visionRefineThreshold"
+                               value="{config.visionRefineThreshold}" min="0" max="1" step="0.05">
+                    </div>
+                    <p class="help">Minimum confidence score for a frame to survive the refinement pass (0.0 - 1.0). Default: 0.6</p>
+                </div>
+            </div>
+
             <!-- Clip Generation Settings -->
             <div class="box">
                 <h2 class="title is-4">

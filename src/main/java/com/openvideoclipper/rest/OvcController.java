@@ -293,7 +293,14 @@ public class OvcController {
             @FormParam("analysisMaxSuggestions") String analysisMaxSuggestions,
             @FormParam("analysisPrompt") String analysisPrompt,
             @FormParam("clipCodec") String clipCodec,
-            @FormParam("clipFormat") String clipFormat
+            @FormParam("clipFormat") String clipFormat,
+            @FormParam("visionEnabled") String visionEnabled,
+            @FormParam("visionModel") String visionModel,
+            @FormParam("visionFrameInterval") String visionFrameInterval,
+            @FormParam("visionMaxFrames") String visionMaxFrames,
+            @FormParam("visionBatchSize") String visionBatchSize,
+            @FormParam("visionRefineEnabled") String visionRefineEnabled,
+            @FormParam("visionRefineThreshold") String visionRefineThreshold
     ) {
         settingsService.saveSettings(
             ollamaUrl,
@@ -314,7 +321,14 @@ public class OvcController {
             parseOrDefault(analysisMaxSuggestions, 15),
             analysisPrompt,
             clipCodec,
-            clipFormat
+            clipFormat,
+            Boolean.parseBoolean(visionEnabled),
+            visionModel,
+            parseOrDefault(visionFrameInterval, 2),
+            parseOrDefault(visionMaxFrames, 240),
+            parseOrDefault(visionBatchSize, 8),
+            Boolean.parseBoolean(visionRefineEnabled),
+            parseOrDefault(visionRefineThreshold, 0.6)
         );
         return Response.seeOther(java.net.URI.create("/settings?saved=true")).build();
     }
