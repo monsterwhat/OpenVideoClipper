@@ -14,6 +14,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openvideoclipper.service.analysis.AnalysisProvider;
 import com.openvideoclipper.service.analysis.AnalysisService;
+import com.openvideoclipper.service.analysis.VisionAnalysisProvider;
 import com.openvideoclipper.service.transcription.TranscriptionProvider;
 import static com.openvideoclipper.utils.LogUtil.info;
 import static com.openvideoclipper.utils.LogUtil.error;
@@ -65,6 +66,9 @@ public class VideoService {
 
     @Inject
     AnalysisService analysisService;
+
+    @Inject
+    VisionAnalysisProvider visionProvider;
 
     @Inject
     VideoClippingService clippingService;
@@ -436,6 +440,45 @@ public class VideoService {
                     }
                     info("[VideoService] continueProcessingImpl: LLM returned " + highlights.size() + " suggestions");
 
+                    if (config.isVisionEnabled()) {
+                        List<AnalysisProvider.AnalysisEvent> visionEvents = new ArrayList<>();
+                        visionProvider.setJobContext(jobId);
+                        try {
+                            List<AnalysisProvider.AnalysisResult> visionResults = analysisService.runAll(
+                                Path.of(refreshed.getFilePath()), null, List.of("vision"));
+                            for (AnalysisProvider.AnalysisResult r : visionResults) {
+                                if (r != null && "vision".equals(r.type())) visionEvents.addAll(r.events());
+                            }
+                            info("[VideoService] continueProcessingImpl: vision returned " + visionEvents.size() + " events");
+                            if (!visionEvents.isEmpty() && config.isVisionRefineEnabled()) {
+                                visionEvents = visionProvider.refineEvents(visionEvents, refreshed.getDurationSeconds());
+                                info("[VideoService] continueProcessingImpl: vision refine kept " + visionEvents.size() + " events");
+                            }
+                        } catch (Exception e) {
+                            error("[VideoService] continueProcessingImpl: vision analysis failed, continuing with LLM suggestions only - " + e.getMessage(), e);
+                            visionEvents = List.of();
+                        } finally {
+                            visionProvider.clearJobContext();
+                        }
+                        if (!visionEvents.isEmpty()) {
+                            // ensure mutable
+                            highlights = new ArrayList<>(highlights);
+                            for (AnalysisProvider.AnalysisEvent ev : visionEvents) {
+                                String reason = "Visual moment detected by vision analysis";
+                                if (ev.metadata() != null && ev.metadata().get("reason") instanceof String rs && !rs.isBlank()) {
+                                    reason = rs;
+                                }
+                                boolean overlaps = highlights.stream().anyMatch(h ->
+                                    iou(h.start(), h.end(), ev.start(), ev.end()) >= 0.5);
+                                if (!overlaps) {
+                                    highlights.add(new LLMProvider.Suggestion(
+                                        ev.start(), ev.end(), ev.label(), reason, ev.confidence()));
+                                }
+                            }
+                            info("[VideoService] continueProcessingImpl: total suggestions after vision merge = " + highlights.size());
+                        }
+                    }
+
                     transaction.begin();
                     VideoJob j4 = jobRepo.findById(jobId);
                     List<SceneBoundary> scenes = sceneRepo.findByJobIdOrderBySceneIndex(jobId);
@@ -582,6 +625,13 @@ public class VideoService {
             cs.setEndTimeSeconds(snappedEnd);
             info("[VideoService] snapped suggestion [" + start + ", " + end + "] to scene boundary [" + snappedStart + ", " + snappedEnd + "]");
         }
+    }
+
+    private double iou(double aStart, double aEnd, double bStart, double bEnd) {
+        double inter = Math.min(aEnd, bEnd) - Math.max(aStart, bStart);
+        if (inter <= 0) return 0;
+        double union = (aEnd - aStart) + (bEnd - bStart) - inter;
+        return union <= 0 ? 0 : inter / union;
     }
 
     private TranscriptionProvider.TranscriptionResult runStreamingTranscription(UUID jobId, Path audioPath, int startChunk) {
