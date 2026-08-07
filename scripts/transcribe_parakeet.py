@@ -122,13 +122,24 @@ def run_streaming_transcription(audio_file, model=DEFAULT_MODEL, start_chunk=0, 
     chunks = split_audio_chunks(audio_data, sample_rate, chunk_length_s, stride_length_s)
     total_chunks = len(chunks)
     
-    # One shared pipeline instance across threads; transformers pipelines support concurrent inference.
-    pipe = pipeline(
-        "automatic-speech-recognition",
-        model=model,
-        device=device,
-        dtype=dtype,
-    )
+    # One pipeline per worker thread. A single shared pipeline is NOT safe here:
+    # Parakeet's generate() keeps mutable per-instance state (_step_durations /
+    # _encoder_finished) and deletes it when the call returns, so concurrent calls
+    # on the same model race and crash with:
+    #   AttributeError: 'ParakeetForTDT' object has no attribute '_step_durations'
+    # Each worker thread lazily creates its own model copy instead.
+    pipe_local = threading.local()
+
+    def get_pipe():
+        pipe = getattr(pipe_local, "pipe", None)
+        if pipe is None:
+            pipe_local.pipe = pipeline(
+                "automatic-speech-recognition",
+                model=model,
+                device=device,
+                dtype=dtype,
+            )
+        return pipe_local.pipe
     
     all_chunks = []
     pending = collections.deque()
@@ -141,7 +152,7 @@ def run_streaming_transcription(audio_file, model=DEFAULT_MODEL, start_chunk=0, 
         
         try:
             # Run inference WITHOUT timestamps to avoid tokenizer bug
-            result = pipe(tmp_path, return_timestamps=False)
+            result = get_pipe()(tmp_path, return_timestamps=False)
             text = result.get("text", "").strip()
             return {
                 "index": chunk_info['index'],
