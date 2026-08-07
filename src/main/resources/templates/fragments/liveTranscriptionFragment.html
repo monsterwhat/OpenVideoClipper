@@ -110,6 +110,7 @@
 
     var isDestroyed = false;
     var initialLoadDone = false;
+    var pendingChunks = [];
 
     function cleanup() {
         isDestroyed = true;
@@ -135,31 +136,32 @@
         localStorage.setItem(VOLUME_KEY, videoEl.volume);
     });
 
-    // ─── Video timeupdate — auto-highlight current chunk ───
+    // ─── Karaoke word-level highlighting ───────────────────
+    // TranscriptionKaraoke highlights the exact word under the playhead
+    // (instead of the whole 5s chunk) and auto-scrolls only when the
+    // active word leaves the viewport.
 
-    function highlightCurrentChunk() {
-        if (!videoEl) return;
-        var t = videoEl.currentTime;
-        var chunks = document.querySelectorAll('.transcript-chunk');
-        var activeFound = false;
-        chunks.forEach(function(ch) {
-            var start = parseFloat(ch.dataset.start);
-            var end = parseFloat(ch.dataset.end);
-            if (t >= start && t < end) {
-                ch.classList.add('active');
-                activeFound = true;
-            } else {
-                ch.classList.remove('active');
-            }
-        });
-        if (activeFound) {
-            var activeCh = document.querySelector('.transcript-chunk.active');
-            if (activeCh) {
-                activeCh.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            }
+    var karaoke = null;
+
+    function buildKaraokeIndex() {
+        if (typeof TranscriptionKaraoke === 'undefined') return;
+        var contentEl = document.getElementById('transcript-content');
+        if (!contentEl) return;
+        var chunks = Array.from(contentEl.querySelectorAll('.transcript-chunk'));
+        if (!karaoke) {
+            karaoke = new TranscriptionKaraoke({
+                videoElement: videoEl,
+                chunkElements: chunks,
+                onChunkChange: function(chunkIndex) {
+                    contentEl.querySelectorAll('.transcript-chunk').forEach(function(ch, i) {
+                        ch.classList.toggle('active', i === chunkIndex);
+                    });
+                }
+            });
+        } else {
+            karaoke.setChunkElements(chunks);
         }
     }
-    videoEl.addEventListener('timeupdate', highlightCurrentChunk);
 
     // ─── Format helper ─────────────────────────────────────
 
@@ -179,6 +181,8 @@
         var contentEl = document.getElementById('transcript-content');
         if (!contentEl) return;
         if (!chunk.text || !chunk.text.trim()) return;
+        // Dedupe: an SSE chunk may race with the initial fetch / a refresh
+        if (contentEl.querySelector('.transcript-chunk[data-chunk-index="' + chunk.index + '"]')) return;
         var waiting = contentEl.querySelector('.has-text-grey.has-text-centered');
         if (waiting) waiting.remove();
 
@@ -194,7 +198,11 @@
 
         var text = document.createElement('span');
         text.className = 'chunk-text';
-        text.textContent = chunk.text || '';
+        if (chunk.words && chunk.words.length > 0 && typeof createWordElements === 'function') {
+            text.innerHTML = createWordElements(chunk.text, chunk.start, chunk.end, chunk.words);
+        } else {
+            text.textContent = chunk.text || '';
+        }
 
         div.appendChild(label);
         div.appendChild(text);
@@ -203,9 +211,14 @@
         div.addEventListener('click', onChunkClick);
         contentEl.appendChild(div);
 
+        buildKaraokeIndex();
+
         var counterEl = document.getElementById('word-counter');
         if (counterEl) {
-            counterEl.textContent = contentEl.querySelectorAll('.transcript-chunk').length + ' segments';
+            var wordCount = contentEl.querySelectorAll('.karaoke-word').length;
+            counterEl.textContent = wordCount > 0
+                ? wordCount + ' words'
+                : contentEl.querySelectorAll('.transcript-chunk').length + ' segments';
         }
         contentEl.scrollTop = contentEl.scrollHeight;
     }
@@ -238,6 +251,15 @@
     }
 
     function onChunkClick(ev) {
+        var wordEl = ev.target.closest ? ev.target.closest('.karaoke-word') : null;
+        if (wordEl && wordEl.dataset.wordStart) {
+            var ws = parseFloat(wordEl.dataset.wordStart);
+            if (!isNaN(ws) && videoEl) {
+                videoEl.currentTime = ws;
+                videoEl.play();
+                return;
+            }
+        }
         var chunk = ev.currentTarget;
         var start = parseFloat(chunk.dataset.start);
         if (isNaN(start)) return;
@@ -248,10 +270,22 @@
 
     // ─── Initial chunk load (single fetch) ─────────────────
 
+    function flushPendingChunks() {
+        var pending = pendingChunks;
+        pendingChunks = [];
+        pending.forEach(function(chunk) { appendChunkBlock(chunk); });
+    }
+
     function loadExistingChunks() {
         if (isDestroyed) return;
         var statusEl = document.getElementById('transcription-status');
         if (statusEl) { statusEl.textContent = 'Loading...'; statusEl.className = 'tag is-info'; }
+
+        // Clear previously rendered chunks so a refresh cannot duplicate segments
+        var contentEl = document.getElementById('transcript-content');
+        if (contentEl) {
+            contentEl.querySelectorAll('.transcript-chunk').forEach(function(el) { el.remove(); });
+        }
 
         fetch('/job/' + jobId + '/transcription/chunks')
             .then(function(r) { return r.json(); })
@@ -262,11 +296,13 @@
                 }
                 if (statusEl) { statusEl.textContent = 'Connected'; statusEl.className = 'tag is-info'; }
                 initialLoadDone = true;
+                flushPendingChunks();
             })
             .catch(function(err) {
                 console.error('Failed to load chunks:', err);
                 if (statusEl) { statusEl.textContent = 'Load failed'; statusEl.className = 'tag is-warning'; }
                 initialLoadDone = true;
+                flushPendingChunks();
             });
     }
 
@@ -277,13 +313,16 @@
     });
 
     container.addEventListener('ovc:chunk', function(e) {
-        if (isDestroyed || !initialLoadDone) return;
+        if (isDestroyed) return;
         var chunk = e.detail;
         if (!chunk) return;
-        var existing = document.querySelector('.transcript-chunk[data-chunk-index="' + chunk.index + '"]');
-        if (!existing) {
-            appendChunkBlock(chunk);
+        // Buffer chunks that arrive while the initial fetch is in flight;
+        // flushPendingChunks() replays them once loading has completed.
+        if (!initialLoadDone) {
+            pendingChunks.push(chunk);
+            return;
         }
+        appendChunkBlock(chunk);
     });
 
     container.addEventListener('ovc:state', function(e) {

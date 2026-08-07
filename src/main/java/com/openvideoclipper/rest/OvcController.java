@@ -491,6 +491,8 @@ public class OvcController {
             .data("transcriptionProgress", progressPct)
             .data("processingPhase", processingPhase)
             .data("processingPhaseLabel", phaseInfo.label())
+            .data("phaseDetailLabel", phaseInfo.detailLabel())
+            .data("phaseSubLabel", phaseInfo.subLabel())
             .data("chunks", chunkData)
             .render();
     }

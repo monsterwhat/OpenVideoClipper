@@ -52,6 +52,12 @@
     var prevStatus = '';
     var evtSource = null;
     var isDestroyed = false;
+    var statusContentSeq = 0;
+    var lastProgress = 0;
+    var lastPhase = '';
+    var lastPhaseLabel = '';
+    var lastPhaseDetailLabel = '';
+    var lastPhaseSubLabel = '';
 
     var STEP_LABELS = ['Upload', 'Transcribe', 'Analyze', 'Clips', 'Done'];
     var ORDER_MAP = {
@@ -102,9 +108,11 @@
         if (phase === 'extracting_audio') colorClass = 'is-warning';
         else if (phase === 'transcribing') colorClass = 'is-info';
         else if (phase && phase.indexOf('analyzing') === 0) colorClass = 'is-link';
-        var oldClass = Array.from(bar.classList).find(function(c) { return c.startsWith('is-'); });
-        if (oldClass && oldClass !== colorClass) bar.classList.replace(oldClass, colorClass);
-        else if (!oldClass) bar.classList.add(colorClass);
+        // Remove only Bulma color classes so size classes (is-small) survive
+        ['is-primary', 'is-link', 'is-info', 'is-success', 'is-warning', 'is-danger'].forEach(function(c) {
+            bar.classList.remove(c);
+        });
+        bar.classList.add(colorClass);
     }
 
     function updatePhaseLabel(phaseLabel, phaseDetailLabel, phaseSubLabel) {
@@ -170,11 +178,34 @@
         }
     }
 
+    // The SSE state event carries no rendered HTML, so on status/phase change
+    // fetch the progress fragment and swap in the per-status action card
+    // (start / review / results / error-retry). A sequence guard drops stale
+    // responses if a newer state event arrived before the fetch completed.
+    function refreshStatusContent() {
+        var seq = ++statusContentSeq;
+        fetch('/job/' + jobId + '/progress')
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                if (seq !== statusContentSeq) return;
+                swapStatusContent(html);
+                // Re-apply live values on top of the freshly swapped card
+                updateProgressBar(lastProgress, lastPhase);
+                updatePhaseLabel(lastPhaseLabel, lastPhaseDetailLabel, lastPhaseSubLabel);
+            })
+            .catch(function(err) { console.warn('[sse] status content refresh failed:', err); });
+    }
+
     function handleStateEvent(data) {
         if (isDestroyed) return;
         var status = data.status || '';
         var phase = data.phase || '';
         var progress = data.progress || 0;
+        lastProgress = progress;
+        lastPhase = phase;
+        lastPhaseLabel = data.phaseLabel || '';
+        lastPhaseDetailLabel = data.phaseDetailLabel || '';
+        lastPhaseSubLabel = data.phaseSubLabel || '';
 
         var progressEl = document.getElementById('job-progress');
         if (progressEl) {
@@ -195,8 +226,8 @@
 
         var phaseChanged = phase !== prevPhase;
         var statusChanged = status !== prevStatus;
-        if ((phaseChanged || statusChanged) && data.statusContentHtml) {
-            swapStatusContent(data.statusContentHtml);
+        if (phaseChanged || statusChanged) {
+            refreshStatusContent();
         }
         prevPhase = phase;
         prevStatus = status;
