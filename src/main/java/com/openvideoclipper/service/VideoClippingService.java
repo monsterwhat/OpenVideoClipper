@@ -209,6 +209,79 @@ public class VideoClippingService {
         }
     }
 
+    public record FrameSample(double timestampSeconds, Path imagePath) {}
+
+    public List<FrameSample> extractFrames(UUID jobId, Path videoPath, Path destDir, double intervalSeconds, int maxFrames, Consumer<Integer> progressCallback) {
+        if (maxFrames <= 0 || intervalSeconds <= 0) {
+            return List.of();
+        }
+
+        Process p = null;
+        try {
+            Files.createDirectories(destDir);
+            try (var stream = Files.list(destDir)) {
+                for (Path f : stream.filter(f -> f.getFileName().toString().matches("frame_\\d{6}\\.jpg")).toList()) {
+                    Files.deleteIfExists(f);
+                }
+            }
+
+            List<String> cmd = List.of(
+                findFfmpeg(), "-i", videoPath.toAbsolutePath().toString(),
+                "-vf", "fps=1/" + intervalSeconds,
+                "-frames:v", String.valueOf(maxFrames),
+                "-q:v", "2",
+                "-y", destDir.resolve("frame_%06d.jpg").toAbsolutePath().toString()
+            );
+
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            p = pb.start();
+            trackProcess(jobId, p);
+
+            StringBuilder log = new StringBuilder();
+            try (var reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    log.append(line).append("\n");
+                    if (progressCallback != null) {
+                        Matcher m = TIME_PATTERN.matcher(line);
+                        if (m.find()) {
+                            double elapsed = Integer.parseInt(m.group(1)) * 3600
+                                           + Integer.parseInt(m.group(2)) * 60
+                                           + Integer.parseInt(m.group(3))
+                                           + Integer.parseInt(m.group(4)) / 100.0;
+                            int pct = Math.min(99, (int) (elapsed / (maxFrames * intervalSeconds) * 100));
+                            progressCallback.accept(pct);
+                        }
+                    }
+                }
+            }
+
+            boolean done = p.waitFor(5, TimeUnit.MINUTES);
+            if (!done || p.exitValue() != 0) {
+                p.destroyForcibly();
+                throw new IOException("FFmpeg frame extraction failed:\n" + log);
+            }
+
+            if (progressCallback != null) progressCallback.accept(100);
+
+            try (var stream = Files.list(destDir)) {
+                return stream
+                    .filter(f -> f.getFileName().toString().matches("frame_\\d{6}\\.jpg"))
+                    .map(f -> {
+                        String name = f.getFileName().toString();
+                        int idx = Integer.parseInt(name.replaceAll("\\D", ""));
+                        return new FrameSample((idx - 1) * intervalSeconds, f);
+                    })
+                    .sorted((a, b) -> Double.compare(a.timestampSeconds(), b.timestampSeconds()))
+                    .toList();
+            }
+        } catch (IOException | InterruptedException e) {
+            if (p != null && p.isAlive()) p.destroyForcibly();
+            throw new RuntimeException("Failed to extract frames", e);
+        }
+    }
+
     private void runFfmpeg(UUID jobId, Path input, Path output, double start, double end) throws IOException, InterruptedException {
         double duration = end - start;
 
