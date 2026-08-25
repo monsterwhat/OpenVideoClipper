@@ -223,7 +223,7 @@ run-dev.bat
 build-uberjar.bat
 
 # Run
-java -jar target/ovc-1.1.0-runner.jar
+java -jar target/ovc-1.1.1-runner.jar
 ```
 
 ### First Run

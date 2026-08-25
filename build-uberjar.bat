@@ -16,7 +16,7 @@ if %errorlevel% neq 0 (
 )
 echo.
 echo Build complete! Uber-jar created at:
-echo target\ovc-1.1.0-runner.jar
+echo target\ovc-1.1.1-runner.jar
 echo.
-echo To run: java -jar target\ovc-1.1.0-runner.jar
+echo To run: java -jar target\ovc-1.1.1-runner.jar
 pause
