@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build uber-jar
+        run: mvn -B clean package -DskipTests "-Dnet.bytebuddy.experimental=true"
+
+      - name: Upload uber-jar to release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: target/*-runner.jar

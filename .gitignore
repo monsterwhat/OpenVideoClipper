@@ -67,3 +67,4 @@ PLAN.md
 # ── NOT ignored (keep tracked) ───────────────────────────
 !run-dev.bat
 !build-uberjar.bat
+/.playwright-mcp
