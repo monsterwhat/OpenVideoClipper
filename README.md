@@ -2,7 +2,7 @@
 
 A self-hosted web application that automatically transcribes videos, uses AI to find the most interesting moments, and clips them out — all from a local browser UI.
 
-**Stack:** Java 25 · Quarkus 3.37 · SQLite · Qute templates · Bulma CSS · Ollama (local LLM) · Python (transcription/scenes)
+**Stack:** Java 25 · Quarkus 3.38 · SQLite · Qute templates · Bulma CSS · Ollama (local LLM) · Python (transcription/scenes)
 
 ---
 
@@ -223,7 +223,7 @@ run-dev.bat
 build-uberjar.bat
 
 # Run
-java -jar target/ovc-1.0.0-runner.jar
+java -jar target/ovc-1.1.0-runner.jar
 ```
 
 ### First Run
@@ -258,7 +258,7 @@ All settings are stored in `application.properties` with runtime overrides via t
 
 ```
 OpenVideoClipper/
-├── pom.xml                          # Maven config (Quarkus 3.37, Java 25, SQLite, Qute)
+├── pom.xml                          # Maven config (Quarkus 3.38, Java 25, SQLite, Qute)
 ├── run-dev.bat                      # Dev server launcher
 ├── build-uberjar.bat                # Production build script
 ├── scripts/                         # Python transcription/detection backends

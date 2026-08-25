@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-echo Cleaning and building Clippy uber-jar...
+echo Cleaning and building OVC uber-jar...
 echo.
 call mvn clean
 if %errorlevel% neq 0 (
@@ -16,7 +16,7 @@ if %errorlevel% neq 0 (
 )
 echo.
 echo Build complete! Uber-jar created at:
-echo target\clippy-1.0.0-runner.jar
+echo target\ovc-1.1.0-runner.jar
 echo.
-echo To run: java -jar target\clippy-1.0.0-runner.jar
+echo To run: java -jar target\ovc-1.1.0-runner.jar
 pause
